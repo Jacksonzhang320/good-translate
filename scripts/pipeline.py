@@ -440,7 +440,7 @@ def main(argv=None):
     bld.add_argument("--formats", default="html,pdf")
     bld.add_argument("--editions", default="mono,bilingual,gov_doc")
     bld.add_argument("--mono-preset", choices=["original", "gov_doc"], help="Preset layout for mono edition (e.g. gov_doc for GB/T 9704-2012)")
-    for option in ("title", "author", "lang", "cover", "output-dir", "browser-path", "file-stem"):
+    for option in ("title", "author", "lang", "cover", "output-dir", "browser-path", "file-stem", "org-name", "doc-number", "journal", "doi"):
         bld.add_argument("--" + option)
     pub = sub.add_parser("accept-publish")
     pub.add_argument("temp_dir")
@@ -474,7 +474,11 @@ def main(argv=None):
                           file_stem=getattr(args, "file_stem", None),
                           title=args.title, author=args.author, lang=args.lang,
                           cover=args.cover, output_dir=args.output_dir,
-                          browser_path=args.browser_path)
+                          browser_path=args.browser_path,
+                          org_name=getattr(args, "org_name", None),
+                          doc_number=getattr(args, "doc_number", None),
+                          journal=getattr(args, "journal", None),
+                          doi=getattr(args, "doi", None))
         elif args.cmd == "accept-publish":
             value = accept_publish(args.temp_dir, args.reviewer, args.evidence)
         elif args.cmd == "status":

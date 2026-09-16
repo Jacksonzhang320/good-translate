@@ -71,6 +71,20 @@ A failed subagent attempt keeps its dispatch snapshot. Repair the output and
 record it, or explicitly cancel that dispatch before starting another attempt.
 Never infer or backfill a dispatch history after the fact.
 
+## Academic metadata retrieval gate
+
+For scientific papers, passive regex extraction often misses preprints, uncorrected proofs, or papers with nonstandard header layouts. Relying on silent fallbacks produces generic placeholders (`学术期刊译情参阅 编号：<hash>`), which violates publication quality standards.
+
+The Agent must actively execute this retrieval gate:
+1. **Detect**: In Step 1/2, check if the source paper's journal and DOI are definitively known.
+2. **Search**: If missing or ambiguous, run a web/academic search query:
+   `"<Paper Title>" "<First Author>"`
+   Verify whether the paper has been published in a peer-reviewed journal or remains a preprint.
+3. **Resolve**:
+   - Journal Name -> Standard Chinese publication header: `{Journal_ZH} 参阅文件` (e.g. `自然·神经科学 参阅文件`, `细胞 参阅文件`, `科学 参阅文件`, `神经元 参阅文件`, `bioRxiv 预印参阅文件`).
+   - DOI & Year -> Standard document number: `DOI〔{Year}〕{short_doi} 号`.
+4. **Inject**: Update `style.json` (`gov_header`) or pass `--journal` / `--doi` / `--org-name` / `--doc-number` during `pipeline.py build`.
+
 ## Publication
 
 The default build produces both HTML/PDF editions. Use `--formats

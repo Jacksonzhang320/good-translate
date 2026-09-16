@@ -54,6 +54,31 @@ class GovDocEditionTests(unittest.TestCase):
         self.assertEqual(org2, "内部智库 参阅")
         self.assertEqual(doc_num2, "〔2026〕第01号")
 
+    def test_gov_header_override_via_build_args(self):
+        # Test that style and doc are updated properly when org_name/doc_number or journal/doi are passed
+        style = {}
+        doc = {"blocks": []}
+        gov_header = style.setdefault("gov_header", {})
+        org_name = "细胞 参阅文件"
+        doc_number = "DOI〔2026〕cell.2026.01.001 号"
+        gov_header["org_name"] = org_name
+        gov_header["doc_number"] = doc_number
+        org, num = publish._detect_gov_header(doc, style)
+        self.assertEqual(org, "细胞 参阅文件")
+        self.assertEqual(num, "DOI〔2026〕cell.2026.01.001 号")
+
+        # Test journal and doi mapping
+        style2 = {}
+        doc2 = {"blocks": []}
+        gov_header2 = style2.setdefault("gov_header", {})
+        journal = "神经元"
+        doi = "10.1016/j.neuron.2026.01.002"
+        gov_header2["org_name"] = f"{journal} 参阅文件"
+        doc2["doi"] = doi
+        org2, num2 = publish._detect_gov_header(doc2, style2)
+        self.assertEqual(org2, "神经元 参阅文件")
+        self.assertIn("j.neuron.2026.01.002", num2)
+
     def test_style_css_gov_doc(self):
         css, info = publish.style_css(self.style, "gov_doc")
         self.assertTrue(info["is_gov_doc"])

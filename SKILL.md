@@ -23,6 +23,14 @@ The word `generated` is not acceptance.
   source-PDF crops when parse fidelity is uncertain. Never output glyph soup.
 - Translation voice: use the user's per-book instructions. Otherwise use
   faithful, fluent prose with consistent terminology.
+- Academic metadata gate: When translating academic papers, never accept blind
+  code fallbacks (such as generic `学术期刊译情参阅 编号：<hash>`). If the parser
+  does not definitively extract the official Journal Name, DOI, and Publication
+  Year, the Agent MUST actively search (via web search / academic lookup) using
+  the paper's Title and Authors, retrieve the official publication venue, map
+  the journal to its standard Chinese formal translation (e.g., `自然·神经科学 参阅文件`,
+  `细胞 参阅文件`, `科学 参阅文件`), format the issue number (`DOI〔{Year}〕{short_doi} 号`),
+  and inject them into `<run>/style.json` (`gov_header`) or pass them during `build`.
 - Work directory: create a new short ASCII run slug. Never reuse a directory
   belonging to different source bytes, instructions, language, or parser data.
 
@@ -85,6 +93,33 @@ complete parse:
 uv run --project "{baseDir}" python "{baseDir}/scripts/pipeline.py" accept-parse "<run>" --reviewer "<name>" --evidence "<concrete pages and objects checked>"
 ```
 
+### 2.5 Academic metadata and citation retrieval gate
+
+Never rely on passive code regexes or silent fallbacks for academic papers. If a paper's PDF text lacks explicit journal or DOI metadata, or if `_detect_gov_header` would produce the fallback placeholder `学术期刊译情参阅 编号：<hex>`:
+
+1. **Active Search & Verification**:
+   The Agent **MUST** use search tools (`search_web`, Crossref, PubMed, or academic search) with the exact paper title and first author to retrieve:
+   - **Authoritative Publication Venue**: The official peer-reviewed journal where the paper appeared (e.g., *Nature Neuroscience*, *Neuron*, *Cell*, *Science*, *PNAS*, *Nature Communications*, etc.). If exclusively a preprint, identify the repository (e.g., *bioRxiv* / *arXiv*).
+   - **Standard Chinese Translation**: Map the journal name to its standard Chinese formal translation (e.g., `自然·神经科学`, `细胞`, `科学`, `神经元`, `美国科学院院报`；or keep the authoritative Latin/English name if untranslated).
+   - **Canonical DOI & Publication Year**: Retrieve the official registered DOI (e.g., `10.1038/s41593-026-02314-z`) and publication year (e.g., `2026`).
+
+2. **Configuration Injection**:
+   Inject the verified metadata before building:
+   - Option A: Write directly into `<run>/style.json` under `gov_header`:
+     ```json
+     "gov_header": {
+       "org_name": "自然·神经科学 参阅文件",
+       "doc_number": "DOI〔2026〕s41593-026-02314-z 号"
+     }
+     ```
+   - Option B: Pass via `pipeline.py build`:
+     ```text
+     uv run --project "{baseDir}" python "{baseDir}/scripts/pipeline.py" build "<run>" --journal "自然·神经科学" --doi "10.1038/s41593-026-02314-z"
+     ```
+     or `--org-name "自然·神经科学 参阅文件" --doc-number "DOI〔2026〕s41593-026-02314-z 号"`.
+
+Never proceed with unverified generic placeholders (`学术期刊译情参阅` or random hex hashes) for published scientific literature.
+
 ### 3. Translate in resumable batches
 
 Use `pipeline.py status` and `run_state.py plan`; dispatch only the listed
@@ -144,12 +179,21 @@ Options:
 - `--file-stem <stem>`: Custom base filename stem (defaults to cleaned title/first H1 heading).
 - `--mono-preset gov_doc`: Renders the monolingual edition directly according to GB/T 9704-2012.
 - `--editions <editions>`: Override edition selection (defaults to `mono,bilingual,gov_doc`).
+- `--journal <name>`: Journal name (auto-infers `{name} 参阅文件` red header).
+- `--doi <doi>`: Official publication DOI (auto-infers `DOI〔{Year}〕{short_doi} 号`).
+- `--org-name <header>`: Explicit issuing authority red header text.
+- `--doc-number <number>`: Explicit document issue number.
 
 The versioned publisher validates exact document coverage, assets, formulas,
 fonts, MathJax readiness, overflow, image decoding, and PDF creation. It writes
 `build_result.json` with status `generated`.
 
 Create contact sheets for generated PDFs and inspect them using [qa.md](references/qa.md).
+Check the Official Document edition (`gov_doc`):
+- Verify the red issuing authority displays the verified journal name (e.g., `自然·神经科学 参阅文件`).
+- Verify the issue number displays the official DOI (e.g., `DOI〔2026〕s41593-026-02314-z 号`).
+- **STRICT REJECTION**: Reject any publication displaying generic placeholders (`学术期刊译情参阅` or random hex hashes `编号：...`) when translating published papers.
+
 Only then call `pipeline.py accept-publish` with concrete evidence. Report the
 run complete only when `pipeline.py status` says `accepted`. Return the exact
 paths and distinguish monolingual from bilingual and official document files.

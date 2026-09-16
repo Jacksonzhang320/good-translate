@@ -763,10 +763,12 @@ def _acceptance(path, result):
     return {"status": "accepted", "record": str(Path(path).resolve()), "reviewer": record["reviewer"]}
 
 
-def build(temp_dir, formats=("html", "pdf"), editions=("mono", "bilingual", "gov_doc"), title=None, author=None, lang=None, cover=None, *, state=None, output_dir=None, browser_path=None, acceptance_path=None, mono_preset=None, file_stem=None):
-    """Return and persist stage-specific results; callers exit nonzero on failed.
+def build(temp_dir, formats="html,pdf", editions="mono,bilingual,gov_doc", mono_preset=None,
+          title=None, author=None, lang=None, cover=None, output_dir=None, browser_path=None,
+          acceptance_path=None, file_stem=None, state=None,
+          org_name=None, doc_number=None, journal=None, doi=None):
+    """Publish accepted translations to HTML, PDF, DOCX, and EPUB editions.
 
-    Defaults produce four artifacts. PDF/DOCX/EPUB always generate prerequisite
     HTML. HTML is a folder bundle: keep assets/ and referenced images beside it.
     An external review record is needed to advance generated to accepted.
     """
@@ -787,6 +789,19 @@ def build(temp_dir, formats=("html", "pdf"), editions=("mono", "bilingual", "gov
         doc, style = load_document(root)
         if mono_preset:
             style["mono_preset"] = mono_preset
+        gov_header = style.setdefault("gov_header", {}) if isinstance(style.get("gov_header"), dict) else {}
+        if org_name:
+            gov_header["org_name"] = org_name
+        elif journal:
+            gov_header["org_name"] = journal if journal.endswith("参阅文件") else f"{journal} 参阅文件"
+        if doc_number:
+            gov_header["doc_number"] = doc_number
+        if gov_header:
+            style["gov_header"] = gov_header
+        if journal:
+            doc["journal"] = journal
+        if doi:
+            doc["doi"] = doi
         translations, assets = load_translations(root, doc)
         result["qa"]["structure"] = "passed"
         title = title or doc.get("title") or "Translated Book"
@@ -890,7 +905,7 @@ def main(argv=None):
     parser.add_argument("--formats", default="html,pdf")
     parser.add_argument("--editions", default="mono,bilingual,gov_doc")
     parser.add_argument("--mono-preset", choices=["original", "gov_doc"])
-    for option in ("title", "author", "lang", "cover", "output-dir", "browser-path", "acceptance-path", "file-stem"):
+    for option in ("title", "author", "lang", "cover", "output-dir", "browser-path", "acceptance-path", "file-stem", "org-name", "doc-number", "journal", "doi"):
         parser.add_argument("--" + option)
     parser.add_argument("--state", help="Optional additional upstream publication context; the live gate still runs")
     args = vars(parser.parse_args(argv))

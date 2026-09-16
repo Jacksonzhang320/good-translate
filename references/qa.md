@@ -37,7 +37,10 @@ Check:
 - each full figure appears once, with its caption;
 - every formula is legible and retains its number;
 - tables fit and remain associated with captions/footnotes;
-- links and images load from portable relative paths.
+- links and images load from portable relative paths;
+- Official Document edition (`gov_doc`) red header:
+  - Header issuing authority (`.gov-header-org`) MUST reflect the verified journal (e.g., `自然·神经科学 参阅文件`), NEVER the unverified fallback `学术期刊译情参阅`;
+  - Header issue number (`.gov-header-docno`) MUST reflect the verified official DOI and publication year (e.g., `DOI〔2026〕s41593-026-02314-z 号`), NEVER a generic hex hash like `编号：39e516e484da`.
 
 Record exact sheets/pages/objects inspected. Vague evidence such as “looks
 good” is insufficient. Do not mark acceptance from DOM checks alone.

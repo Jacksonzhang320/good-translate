@@ -48,6 +48,7 @@ Each chunk gets its own independent subagent with a fresh context window. This p
   1. **Original Journal Edition** (`{Title}_期刊原版.pdf`): High-fidelity 2-column or 1-column layout;
   2. **Interleaved Bilingual Edition** (`{Title}_双语对照.pdf`): Paragraph-by-paragraph aligned bilingual layout;
   3. **Chinese Official Document Edition** (`{Title}_公文版.pdf`): Conforming to **GB/T 9704—2012** (red header, red divider line, standard font size & line spacing) and **GB/T 7714** (10pt compact hanging indent references).
+- **Academic Metadata Retrieval Gate** — Rejects silent code fallbacks and random hash placeholders (e.g. `学术期刊译情参阅 编号：39e516e484da`). The Agent actively uses web/academic search tools when paper metadata is incomplete to retrieve the official journal venue (e.g. *Nature Neuroscience*), canonical DOI, and publication year for formal red headers.
 - **Standard Semantic Naming** — automatically extracts clean titles with edition suffixes and preserves backward-compatible aliases.
 - **Two explicit acceptance gates** — parsing and publication cannot become complete from file existence or automated rendering alone
 - **Multi-format output** — translated, interleaved bilingual, and official document HTML/PDF by default; DOCX/EPUB on request
