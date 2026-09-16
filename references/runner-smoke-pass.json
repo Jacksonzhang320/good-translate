@@ -1,0 +1,19 @@
+{
+  "smoke_id": "tb-runner-20260915-02",
+  "test_type": "runner_integration",
+  "entrypoint": "scripts/start_task.ps1 -> scripts/job.py",
+  "command_fingerprint": "2a6e7b9c2de9af205295458646f3a7e741cd5df6225d2b0001aa8ddee9c9c2ca",
+  "started_at": "2026-09-15T11:21:36.7343329+08:00",
+  "finished_at": "2026-09-15T11:21:42.0983828+08:00",
+  "status": "passed",
+  "checks": {
+    "worker_exit_zero": true,
+    "progress_completed": true,
+    "heartbeat_written": true,
+    "monitor_written": true,
+    "checkpoint_written": true,
+    "final_summary_written": true,
+    "resume_recorded": true
+  },
+  "output_dir": "D:\\Personal\\claudecode_docker\\readbook\\runs\\tb-0915\\runner-smoke-v2"
+}

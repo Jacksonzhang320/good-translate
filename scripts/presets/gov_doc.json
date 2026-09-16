@@ -1,0 +1,47 @@
+{
+  "schema_version": 1,
+  "preset": "gov_doc",
+  "name": "党政机关公文格式 (GB/T 9704-2012)",
+  "page": {
+    "width_pt": 595.28,
+    "height_pt": 841.89,
+    "margin_top_pt": 104.88,
+    "margin_bottom_pt": 99.21,
+    "margin_left_pt": 79.37,
+    "margin_right_pt": 73.7,
+    "columns": 1
+  },
+  "body": {
+    "font_family": "\"FangSong_GB2312\", \"FangSong\", \"仿宋\", \"STFangsong\", serif",
+    "font_size_pt": 16.0,
+    "line_height": 28.5,
+    "color": "#000000"
+  },
+  "headings": {
+    "1": {
+      "font_family": "\"FZXiaoBiaoSong-B05S\", \"方正小标宋简体\", \"小标宋\", \"Source Han Serif SC\", \"SimSun\", serif",
+      "font_size_pt": 22.0,
+      "color": "#000000",
+      "font_weight": "normal",
+      "text_align": "center"
+    },
+    "2": {
+      "font_family": "\"SimHei\", \"黑体\", \"Source Han Sans SC\", sans-serif",
+      "font_size_pt": 16.0,
+      "color": "#000000",
+      "font_weight": "normal"
+    },
+    "3": {
+      "font_family": "\"KaiTi_GB2312\", \"KaiTi\", \"楷体\", \"STKaiti\", serif",
+      "font_size_pt": 16.0,
+      "color": "#000000",
+      "font_weight": "normal"
+    },
+    "4": {
+      "font_family": "\"FangSong_GB2312\", \"FangSong\", \"仿宋\", \"STFangsong\", serif",
+      "font_size_pt": 16.0,
+      "color": "#000000",
+      "font_weight": "bold"
+    }
+  }
+}

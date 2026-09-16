@@ -1,0 +1,62 @@
+{
+  "smoke_id": "tb-render-20260915-03",
+  "test_type": "parse_and_browser_render",
+  "entrypoint": "tests/render_smoke.py",
+  "command_fingerprint": "d1534277af1fcebebc34a33c9c39368810dd2f47f35dea22b6a4a45c688720a6",
+  "started_at": "2026-09-15T11:33:44+08:00",
+  "finished_at": "2026-09-15T03:34:10.3379643+00:00",
+  "status": "passed",
+  "checks": {
+    "parse_gate": "passed",
+    "state_gate": "passed",
+    "mono_dom": {
+      "problems": [],
+      "images": 2,
+      "blocks": 11,
+      "math": 1,
+      "fonts_ready": true,
+      "status": "passed",
+      "browser": "153.0.4234.32",
+      "pdf_visual_review": "passed",
+      "page_style": {
+        "width_pt": 420.0,
+        "height_pt": 520.0,
+        "content_height_pt": 405.12,
+        "columns": 2
+      }
+    },
+    "bilingual_dom": {
+      "problems": [],
+      "images": 2,
+      "blocks": 11,
+      "math": 2,
+      "fonts_ready": true,
+      "status": "passed",
+      "browser": "153.0.4234.32",
+      "pdf_visual_review": "passed",
+      "page_style": {
+        "width_pt": 420.0,
+        "height_pt": 520.0,
+        "content_height_pt": 405.12,
+        "columns": 1
+      }
+    },
+    "publication_status": "accepted",
+    "manual_visual_evidence": "Inspected all pages: title unclipped, mono 2-column, bilingual 1-column, complete figure/caption, legible numbered equation, HTML table in both editions, no overflow."
+  },
+  "output_dir": "D:\\Personal\\claudecode_docker\\readbook\\runs\\tb-0915\\render-smoke-v5",
+  "previews": {
+    "mono": {
+      "pdf": "D:\\Personal\\claudecode_docker\\readbook\\runs\\tb-0915\\render-smoke-v5\\run\\publish\\bf0c73d9e1254e66\\book.pdf",
+      "pages": 2,
+      "preview": "D:\\Personal\\claudecode_docker\\readbook\\runs\\tb-0915\\render-smoke-v5\\preview-mono.png",
+      "sha256": "d9e37164898f02d2265c397350257e65e9b316c8a8dfabba282dfca16ae7ad6c"
+    },
+    "bilingual": {
+      "pdf": "D:\\Personal\\claudecode_docker\\readbook\\runs\\tb-0915\\render-smoke-v5\\run\\publish\\bf0c73d9e1254e66\\book_bilingual.pdf",
+      "pages": 2,
+      "preview": "D:\\Personal\\claudecode_docker\\readbook\\runs\\tb-0915\\render-smoke-v5\\preview-bilingual.png",
+      "sha256": "e3b5532e211292649ed7fdfa499204ce9a5b50a492e72548e4157d1467432545"
+    }
+  }
+}

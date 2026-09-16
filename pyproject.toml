@@ -1,0 +1,21 @@
+[project]
+name = "translate-book-local"
+version = "0.2.0"
+description = "Local PDF translation, source preservation and publishing helpers"
+requires-python = ">=3.12,<3.13"
+dependencies = [
+  "pymupdf>=1.24,<2",
+  "beautifulsoup4>=4.12,<5",
+  "markdown>=3.6,<4",
+  "Pillow>=10,<13",
+  "playwright>=1.45,<2",
+  "pypandoc>=1.13,<2",
+  "pypdf>=5,<7",
+  "pyyaml>=6,<7",
+]
+
+[project.optional-dependencies]
+ocr = ["ocrmypdf>=16,<18"]
+
+[tool.uv]
+package = false

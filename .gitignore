@@ -1,0 +1,32 @@
+# Translation temp directories
+*_temp/
+
+# Full-pipeline test artifacts
+tests/.artifacts/*
+!tests/.artifacts/.gitkeep
+!tests/.artifacts/README.md
+
+# OS files
+.DS_Store
+
+# Python
+__pycache__/
+*.pyc
+.venv/
+venv/
+*.egg-info/
+.pytest_cache/
+.coverage
+
+# Calibre intermediates
+*.htmlz
+
+# Poster build outputs (regenerate from assets/poster/*.pptd via open-kimi-ppt skill)
+assets/poster/.qa-images/
+assets/poster/*.pptx
+
+# Local AI agent / tooling configs and caches
+.agents/
+.claude/*
+!.claude/commands/
+_bmad/
