@@ -1,8 +1,8 @@
 ---
-name: translate-book
+name: good-translate
 description: Reliably translate PDF books and papers while preserving the source page feel, reading order, complete figures, captions, tables, and formulas. Produces Chinese and interleaved bilingual HTML/PDF by default, supports scanned PDF OCR, resumable parallel chunks, per-book style instructions, and optional DOCX/EPUB. Also retains a compatibility route for DOCX/EPUB inputs.
 allowed-tools: Read, Write, Edit, Bash, Glob, Grep, Agent, AskUserQuestion
-metadata: {"openclaw":{"requires":{"bins":["uv"]},"homepage":"https://github.com/deusyu/translate-book"}}
+metadata: {"openclaw":{"requires":{"bins":["uv"]},"homepage":"https://github.com/Jacksonzhang320/good-translate"}}
 ---
 
 # Reliable book and paper translation

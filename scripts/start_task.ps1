@@ -19,4 +19,4 @@ if ($environment.runner -ne 'python') { throw 'Sync the locked project .venv bef
 $parts = @($environment.executable,'-X','utf8','-B',$jobPath,'--spec',$specPath,'--run-dir',[IO.Path]::GetFullPath($OutDir),'--smoke-pass',$smokePath)
 foreach ($part in $parts) { if ($part.Contains('"')) { throw 'Quote characters are not supported in command paths.' } }
 $command = ($parts | ForEach-Object { '"' + $_ + '"' }) -join ' '
-& (Join-Path $toolDir 'start_job.ps1') -WorkDir $projectPath -OutDir $OutDir -Command $command -ResumeCommand $command -Stage 'translate-book'
+& (Join-Path $toolDir 'start_job.ps1') -WorkDir $projectPath -OutDir $OutDir -Command $command -ResumeCommand $command -Stage 'good-translate'

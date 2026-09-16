@@ -166,6 +166,40 @@ wheels = [
 ]
 
 [[package]]
+name = "good-translate-local"
+version = "0.2.0"
+source = { virtual = "." }
+dependencies = [
+    { name = "beautifulsoup4" },
+    { name = "markdown" },
+    { name = "pillow" },
+    { name = "playwright" },
+    { name = "pymupdf" },
+    { name = "pypandoc" },
+    { name = "pypdf" },
+    { name = "pyyaml" },
+]
+
+[package.optional-dependencies]
+ocr = [
+    { name = "ocrmypdf" },
+]
+
+[package.metadata]
+requires-dist = [
+    { name = "beautifulsoup4", specifier = ">=4.12,<5" },
+    { name = "markdown", specifier = ">=3.6,<4" },
+    { name = "ocrmypdf", marker = "extra == 'ocr'", specifier = ">=16,<18" },
+    { name = "pillow", specifier = ">=10,<13" },
+    { name = "playwright", specifier = ">=1.45,<2" },
+    { name = "pymupdf", specifier = ">=1.24,<2" },
+    { name = "pypandoc", specifier = ">=1.13,<2" },
+    { name = "pypdf", specifier = ">=5,<7" },
+    { name = "pyyaml", specifier = ">=6,<7" },
+]
+provides-extras = ["ocr"]
+
+[[package]]
 name = "greenlet"
 version = "3.5.6"
 source = { registry = "https://pypi.org/simple" }
@@ -566,40 +600,6 @@ sdist = { url = "https://files.pythonhosted.org/packages/69/99/a6ca3beb3ccacb41f
 wheels = [
     { url = "https://files.pythonhosted.org/packages/eb/dc/ad025c1ee131eba60c69f4dd5779b18fcf1e6b21a343e2162a84d5d133c7/soupsieve-2.9.2-py3-none-any.whl", hash = "sha256:8089a26fd974ca7a1f30276d3d8492ab266ab15af581642dfe8aa162e0c1c823", size = 37370, upload-time = "2026-08-07T00:57:23.524Z" },
 ]
-
-[[package]]
-name = "translate-book-local"
-version = "0.2.0"
-source = { virtual = "." }
-dependencies = [
-    { name = "beautifulsoup4" },
-    { name = "markdown" },
-    { name = "pillow" },
-    { name = "playwright" },
-    { name = "pymupdf" },
-    { name = "pypandoc" },
-    { name = "pypdf" },
-    { name = "pyyaml" },
-]
-
-[package.optional-dependencies]
-ocr = [
-    { name = "ocrmypdf" },
-]
-
-[package.metadata]
-requires-dist = [
-    { name = "beautifulsoup4", specifier = ">=4.12,<5" },
-    { name = "markdown", specifier = ">=3.6,<4" },
-    { name = "ocrmypdf", marker = "extra == 'ocr'", specifier = ">=16,<18" },
-    { name = "pillow", specifier = ">=10,<13" },
-    { name = "playwright", specifier = ">=1.45,<2" },
-    { name = "pymupdf", specifier = ">=1.24,<2" },
-    { name = "pypandoc", specifier = ">=1.13,<2" },
-    { name = "pypdf", specifier = ">=5,<7" },
-    { name = "pyyaml", specifier = ">=6,<7" },
-]
-provides-extras = ["ocr"]
 
 [[package]]
 name = "typing-extensions"

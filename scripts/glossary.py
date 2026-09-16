@@ -544,7 +544,7 @@ def format_terms_for_prompt(terms):
 
 
 def main():
-    parser = argparse.ArgumentParser(description="Glossary management for translate-book")
+    parser = argparse.ArgumentParser(description="Glossary management for good-translate")
     sub = parser.add_subparsers(dest='cmd', required=True)
 
     p_count = sub.add_parser('count-frequencies', help="Update frequencies in glossary.json")

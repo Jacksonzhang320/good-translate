@@ -1,4 +1,4 @@
-# Rainman Translate Book
+# Good Translate
 
 English | [中文](README.zh-CN.md)
 
@@ -7,7 +7,7 @@ An agent skill for Codex, Claude Code, and OpenClaw that translates entire books
 The reliable PDF path preserves measured page size, margins, typography, heading color/scale, source column count, complete figures and captions, tables, and formulas. It produces Chinese and interleaved bilingual HTML/PDF by default. DOCX/EPUB inputs remain supported through the legacy structure-preserving route.
 
 <p align="center">
-  <img src="assets/poster/translate-book-poster-en.jpg" alt="translate-book — a whole book, translated in parallel: split into chunks, translated by 8 parallel sub-agents, verified and merged into a complete book" width="480">
+  <img src="assets/poster/translate-book-poster-en.jpg" alt="good-translate — a whole book, translated in parallel: split into chunks, translated by 8 parallel sub-agents, verified and merged into a complete book" width="480">
 </p>
 
 > Inspired by [claude_translater](https://github.com/wizlijun/claude_translater). The original project uses shell scripts as its entry point, coordinating the Claude CLI with multiple step scripts to perform chunked translation. This project restructures the workflow as an agent skill for Codex, Claude Code, and OpenClaw, using subagents to translate chunks in parallel, with manifest-driven integrity checks, resumable runs, and multi-format output unified into a single pipeline. As the project structure and implementation differ significantly from the original, this is an independent project rather than a fork.
@@ -71,14 +71,14 @@ Each chunk gets its own independent subagent with a fresh context window. This p
 #### Codex
 
 ```bash
-npx skills add deusyu/translate-book -a codex -g
+npx skills add Jacksonzhang320/good-translate -a codex -g
 ```
 
 Or install it manually:
 
 ```bash
 mkdir -p ~/.agents/skills
-git clone https://github.com/deusyu/translate-book.git ~/.agents/skills/translate-book
+git clone https://github.com/Jacksonzhang320/good-translate.git ~/.agents/skills/good-translate
 ```
 
 Restart Codex if the newly installed skill does not appear.
@@ -86,20 +86,20 @@ Restart Codex if the newly installed skill does not appear.
 #### Claude Code
 
 ```bash
-npx skills add deusyu/translate-book -a claude-code -g
+npx skills add Jacksonzhang320/good-translate -a claude-code -g
 ```
 
 Or install it manually:
 
 ```bash
 mkdir -p ~/.claude/skills
-git clone https://github.com/deusyu/translate-book.git ~/.claude/skills/translate-book
+git clone https://github.com/Jacksonzhang320/good-translate.git ~/.claude/skills/good-translate
 ```
 
 #### OpenClaw
 
 ```bash
-openclaw skills install @deusyu/translate-book
+openclaw skills install @Jacksonzhang320/good-translate
 ```
 
 ### 2. Translate a book
@@ -109,7 +109,7 @@ openclaw skills install @deusyu/translate-book
 In the Codex CLI or IDE extension, enter:
 
 ```text
-$translate-book Translate /path/to/book.pdf into Chinese.
+$good-translate Translate /path/to/book.pdf into Chinese.
 ```
 
 Codex can also select the skill automatically when your request matches its description.
@@ -125,7 +125,7 @@ translate /path/to/book.pdf to Chinese
 In Claude Code, you can also use the slash command:
 
 ```text
-/translate-book translate /path/to/book.pdf to Japanese
+/good-translate translate /path/to/book.pdf to Japanese
 ```
 
 The skill routes the source, translates in resumable batches, closes terminology feedback, and renders the requested editions. A run is complete only after page-level visual acceptance.
@@ -288,7 +288,7 @@ Then: merge → Pandoc HTML → inject TOC → Calibre generates DOCX, EPUB, PDF
 
 ## Roadmap
 
-Tracking [issue #7](https://github.com/deusyu/translate-book/issues/7) — name/term inconsistency and pronoun/gender errors across chunks. The pipeline now covers high-frequency entities, alias/spelling drift, adjacent-chunk pronoun context, and selective re-translation after glossary changes. Full-book organic validation remains a future quality pass. The plan is four independently shippable phases.
+Tracking [issue #7](https://github.com/Jacksonzhang320/good-translate/issues/7) — name/term inconsistency and pronoun/gender errors across chunks. The pipeline now covers high-frequency entities, alias/spelling drift, adjacent-chunk pronoun context, and selective re-translation after glossary changes. Full-book organic validation remains a future quality pass. The plan is four independently shippable phases.
 
 ### Design principles
 
@@ -328,7 +328,7 @@ Recent PR discussions also surfaced several useful workflow improvements, but th
 
 If you find this project helpful, please consider giving it a Star ⭐!
 
-[![Star History Chart](https://api.star-history.com/svg?repos=deusyu/translate-book&type=Date)](https://star-history.com/#deusyu/translate-book&Date)
+[![Star History Chart](https://api.star-history.com/svg?repos=Jacksonzhang320/good-translate&type=Date)](https://star-history.com/#Jacksonzhang320/good-translate&Date)
 
 ## Sponsor
 

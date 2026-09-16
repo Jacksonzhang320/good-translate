@@ -1,4 +1,4 @@
-# Rainman Translate Book
+# Good Translate
 
 [English](README.md) | 中文
 
@@ -7,7 +7,7 @@
 新的可靠 PDF 路径会保留测得的页面尺寸、页边距、字体观感、标题颜色与层级、原文栏数、完整图片与图注、表格和公式；默认生成中文与段落交错双语 HTML/PDF。DOCX/EPUB 输入继续通过兼容路径处理。
 
 <p align="center">
-  <img src="assets/poster/translate-book-poster.jpg" alt="translate-book 项目海报——一整本书,并行翻译:拆块后由 8 个并行子代理同时翻译,校验合并成完整译本" width="480">
+  <img src="assets/poster/translate-book-poster.jpg" alt="good-translate 项目海报——一整本书,并行翻译:拆块后由 8 个并行子代理同时翻译,校验合并成完整译本" width="480">
 </p>
 
 > 本项目受 [claude_translater](https://github.com/wizlijun/claude_translater) 启发。原项目以 shell 脚本为入口，配合 Claude CLI 和多个步骤脚本完成分块翻译；本项目则将流程重构为可在 Codex、Claude Code 和 OpenClaw 中使用的 Agent Skill，使用 subagent 按 chunk 并行翻译，并引入 manifest 驱动的完整性校验，将续跑和多格式输出整合为更统一的流水线。由于项目结构和实现方式均与原项目不同，本项目为独立实现，而非 fork。
@@ -71,14 +71,14 @@ PDF 输入
 #### Codex
 
 ```bash
-npx skills add deusyu/translate-book -a codex -g
+npx skills add Jacksonzhang320/good-translate -a codex -g
 ```
 
 或手动安装：
 
 ```bash
 mkdir -p ~/.agents/skills
-git clone https://github.com/deusyu/translate-book.git ~/.agents/skills/translate-book
+git clone https://github.com/Jacksonzhang320/good-translate.git ~/.agents/skills/good-translate
 ```
 
 如果新安装的 Skill 没有出现，请重启 Codex。
@@ -86,20 +86,20 @@ git clone https://github.com/deusyu/translate-book.git ~/.agents/skills/translat
 #### Claude Code
 
 ```bash
-npx skills add deusyu/translate-book -a claude-code -g
+npx skills add Jacksonzhang320/good-translate -a claude-code -g
 ```
 
 或手动安装：
 
 ```bash
 mkdir -p ~/.claude/skills
-git clone https://github.com/deusyu/translate-book.git ~/.claude/skills/translate-book
+git clone https://github.com/Jacksonzhang320/good-translate.git ~/.claude/skills/good-translate
 ```
 
 #### OpenClaw
 
 ```bash
-openclaw skills install @deusyu/translate-book
+openclaw skills install @Jacksonzhang320/good-translate
 ```
 
 ### 2. 翻译一本书
@@ -109,7 +109,7 @@ openclaw skills install @deusyu/translate-book
 在 Codex CLI 或 IDE 扩展中输入：
 
 ```text
-$translate-book Translate /path/to/book.pdf into Chinese.
+$good-translate Translate /path/to/book.pdf into Chinese.
 ```
 
 当请求与 Skill 描述匹配时，Codex 也可以自动选择该 Skill。
@@ -125,7 +125,7 @@ translate /path/to/book.pdf to Chinese
 在 Claude Code 中也可以使用斜杠命令：
 
 ```text
-/translate-book translate /path/to/book.pdf to Japanese
+/good-translate translate /path/to/book.pdf to Japanese
 ```
 
 Skill 自动完成路由、可续跑分批翻译、术语反馈闭环和版本化渲染。只有页面级视觉验收通过后才算完成。
@@ -288,7 +288,7 @@ python3 scripts/merge_and_build.py --temp-dir book_temp --title "《译后书名
 
 ## 后续规划
 
-跟踪 [issue #7](https://github.com/deusyu/translate-book/issues/7) — chunk 之间的人名/术语不一致以及代词/性别错误。当前流水线已覆盖高频实体、别名/拼写漂移、相邻 chunk 的代词上下文，以及术语表变更后的精确重译。整书自然度校验仍是后续质量阶段。整体方案分为四个可独立交付的阶段。
+跟踪 [issue #7](https://github.com/Jacksonzhang320/good-translate/issues/7) — chunk 之间的人名/术语不一致以及代词/性别错误。当前流水线已覆盖高频实体、别名/拼写漂移、相邻 chunk 的代词上下文，以及术语表变更后的精确重译。整书自然度校验仍是后续质量阶段。整体方案分为四个可独立交付的阶段。
 
 ### 设计原则
 
@@ -328,7 +328,7 @@ Phase 1 让术语表按批次增长,因此第一批看到的术语表最小,drif
 
 如果这个项目对您有帮助，请考虑为其点亮一颗 Star ⭐！
 
-[![Star History Chart](https://api.star-history.com/svg?repos=deusyu/translate-book&type=Date)](https://star-history.com/#deusyu/translate-book&Date)
+[![Star History Chart](https://api.star-history.com/svg?repos=Jacksonzhang320/good-translate&type=Date)](https://star-history.com/#Jacksonzhang320/good-translate&Date)
 
 ## 赞助
 

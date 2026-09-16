@@ -1,5 +1,5 @@
 """
-run_state.py - Selective re-translation state for translate-book.
+run_state.py - Selective re-translation state for good-translate.
 
 The state file records what glossary and source/output hashes were used for
 each translated chunk. Future runs can then decide which chunks need actual

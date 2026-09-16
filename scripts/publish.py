@@ -359,6 +359,7 @@ th {{ font-family: "SimHei", "黑体", sans-serif; font-weight: normal; border-b
 td {{ border-bottom: 0.5pt solid #ccc; padding: 0.4em; }}
 .source-anchor {{ display: none; }}
 mjx-container {{ max-width: 100%; }}
+mjx-container > svg {{ max-width: 100%; height: auto; }}
 .cover {{ text-align: center; break-after: page; }}
 .cover img {{ max-height: {height-mt-mb-24}pt; }}
 @media print {{ html {{ background: white; }} body {{ width: auto; margin: 0; padding: 0; }} a {{ color: inherit; text-decoration: none; }} }}
@@ -417,6 +418,7 @@ td,th {{ border: .5pt solid #999; padding: .3em; overflow-wrap: anywhere; }}
 .trans {{ margin-bottom: 1em; }}
 .source-anchor {{ display: inline-block; font-size: 7pt; color: #777; margin: 4pt 0 2pt; }}
 mjx-container {{ max-width: 100%; }}
+mjx-container > svg {{ max-width: 100%; height: auto; }}
 .cover {{ column-span: {wide_span}; text-align: center; break-after: page; }}
 .cover img {{ max-height: {height-mt-mb-24}pt; }}
 @media print {{ html {{ background: white; }} body {{ width: auto; margin: 0; padding: 0; }} main {{ column-fill: balance; }} a {{ color: inherit; text-decoration: none; }} .source-anchor {{ font-size: 7pt; }} }}

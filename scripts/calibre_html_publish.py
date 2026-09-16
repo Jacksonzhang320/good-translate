@@ -233,7 +233,7 @@ def convert_html_with_calibre(html_file, output_file, format_type, timeout=600, 
         "--title", title,
         "--authors", author,
         "--language", lang,
-        "--book-producer", "translate-book",
+        "--book-producer", "good-translate",
         "--preserve-cover-aspect-ratio",
         "--smarten-punctuation"
     ]

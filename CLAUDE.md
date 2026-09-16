@@ -2,7 +2,7 @@
 
 ## Project
 
-translate-book is an agent skill for Codex, Claude Code, and OpenClaw that translates books (PDF/DOCX/EPUB) into any language using parallel subagents. Published on ClawHub as `translate-book` and on GitHub as `deusyu/translate-book`.
+good-translate is an agent skill for Codex, Claude Code, and OpenClaw that translates books (PDF/DOCX/EPUB) into any language using parallel subagents. Published on ClawHub as `good-translate` and on GitHub as `Jacksonzhang320/good-translate`.
 
 ## Structure
 
