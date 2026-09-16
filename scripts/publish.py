@@ -87,10 +87,80 @@ def _semantic_stem(doc, translations, edition, file_stem=None, title=None):
     return f"{base}_{suffix}"
 
 
+JOURNAL_MAP = (
+    (r"10\.1038/s41593", "自然·神经科学"),
+    (r"10\.1038/s41586", "自然"),
+    (r"10\.1038/s41467", "自然·通讯"),
+    (r"10\.1038/s41592", "自然·方法"),
+    (r"10\.1038/s41587", "自然·生物技术"),
+    (r"10\.1038/s41591", "自然·医学"),
+    (r"10\.1016/j\.cell", "细胞"),
+    (r"10\.1016/j\.neuron", "神经元"),
+    (r"10\.1126/science", "科学"),
+    (r"10\.1073/pnas", "美国国家科学院院刊"),
+)
+
+TEXT_JOURNAL_MAP = (
+    (r"\bnature\s+neuroscience\b", "自然·神经科学"),
+    (r"\bnature\s+communications\b", "自然·通讯"),
+    (r"\bnature\s+methods\b", "自然·方法"),
+    (r"\bnature\s+biotechnology\b", "自然·生物技术"),
+    (r"\bnature\s+medicine\b", "自然·医学"),
+    (r"\bnature\b", "自然·神经科学"),
+    (r"\bneuron\b", "神经元"),
+    (r"\bcell\b", "细胞"),
+    (r"\bscience\b", "科学"),
+    (r"\bpnas\b", "美国国家科学院院刊"),
+)
+
+
 def _detect_gov_header(doc, style):
     custom = style.get("gov_header", {}) if isinstance(style.get("gov_header"), dict) else {}
     org_name = custom.get("org_name")
     doc_number = custom.get("doc_number")
+
+    blocks = doc.get("blocks", [])
+
+    # 1. Detect DOI
+    doi = doc.get("doi") or (doc.get("source") or {}).get("doi")
+    if not doi:
+        first_text = " ".join(b.get("text", "") for b in blocks[:15])
+        doi_match = re.search(r"10\.\d{4,9}/[-._;()/:A-Za-z0-9]+", first_text)
+        if doi_match:
+            doi = doi_match.group(0).rstrip(".")
+
+    if not doi:
+        full_text = "\n".join(b.get("text", "") for b in blocks)
+        explicit_m = re.search(r"(?:available at|this paper at|article at)\s*https?://doi\.org/(10\.\d{4,9}/[^\s,;\)\]>]+)", full_text, re.I)
+        if explicit_m:
+            doi = explicit_m.group(1).rstrip(".")
+
+    if not doi:
+        full_text = "\n".join(b.get("text", "") for b in blocks)
+        all_dois = re.findall(r"10\.\d{4,9}/[-._;()/:A-Za-z0-9]+", full_text)
+        cleaned_dois = [d.rstrip(".") for d in all_dois]
+        counts = Counter(cleaned_dois)
+        for cand_doi, count in counts.most_common(3):
+            if count > 1:
+                doi = cand_doi
+                break
+
+    # 2. Detect Year
+    from datetime import datetime
+    year = str(datetime.now().year)
+    early_text = " ".join(b.get("text", "") for b in blocks[:20])
+    year_m = re.search(r"(?:Published(?:\s*online)?|Accepted):\s*.*?(20\d\d)", early_text, re.I)
+    if not year_m:
+        year_m = re.search(r"(?:Received|©):\s*.*?(20\d\d)", early_text, re.I)
+    if not year_m and doi:
+        doi_yr = re.search(r"-0?(\d{2,4})-", doi)
+        if doi_yr:
+            y_val = doi_yr.group(1)
+            year = f"20{y_val}" if len(y_val) == 2 else y_val
+    elif year_m:
+        year = year_m.group(1)
+
+    # 3. Detect Journal
     if not org_name:
         journal = doc.get("journal") or (doc.get("source") or {}).get("journal")
         publisher = doc.get("publisher") or (doc.get("source") or {}).get("publisher")
@@ -99,25 +169,30 @@ def _detect_gov_header(doc, style):
         elif publisher:
             org_name = f"{publisher} 参阅文件"
         else:
-            first_text = " ".join(b.get("text", "") for b in doc.get("blocks", [])[:8])
-            if "nature" in first_text.lower():
-                org_name = "自然·神经科学 参阅文件"
-            else:
+            if doi:
+                for pat, jname in JOURNAL_MAP:
+                    if re.search(pat, doi, re.I):
+                        org_name = f"{jname} 参阅文件"
+                        break
+            if not org_name:
+                sample_text = " ".join(b.get("text", "") for b in blocks[:20] + blocks[-20:])
+                for pat, jname in TEXT_JOURNAL_MAP:
+                    if re.search(pat, sample_text, re.I):
+                        org_name = f"{jname} 参阅文件"
+                        break
+            if not org_name:
                 org_name = "学术期刊译情参阅"
+
+    # 4. Doc Number
     if not doc_number:
-        doi = doc.get("doi") or (doc.get("source") or {}).get("doi")
-        if not doi:
-            first_text = " ".join(b.get("text", "") for b in doc.get("blocks", [])[:8])
-            doi_match = re.search(r"10\.\d{4,9}/[-._;()/:A-Za-z0-9]+", first_text)
-            if doi_match:
-                doi = doi_match.group(0)
         if doi:
             short_doi = re.sub(r"^10\.\d+/", "", doi)
-            doc_number = f"DOI〔2026〕{short_doi} 号"
+            doc_number = f"DOI〔{year}〕{short_doi} 号"
         elif doc.get("doc_id"):
             doc_number = f"编号：{str(doc['doc_id'])[:12]}"
         else:
-            doc_number = "内部参阅〔2026〕第 1 号"
+            doc_number = f"内部参阅〔{year}〕第 1 号"
+
     return org_name, doc_number
 
 
