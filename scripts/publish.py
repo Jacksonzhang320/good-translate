@@ -766,7 +766,8 @@ def _acceptance(path, result):
 def build(temp_dir, formats="html,pdf", editions="mono,bilingual,gov_doc", mono_preset=None,
           title=None, author=None, lang=None, cover=None, output_dir=None, browser_path=None,
           acceptance_path=None, file_stem=None, state=None,
-          org_name=None, doc_number=None, journal=None, doi=None):
+          org_name=None, doc_number=None, journal=None, doi=None,
+          legacy_aliases=False):
     """Publish accepted translations to HTML, PDF, DOCX, and EPUB editions.
 
     HTML. HTML is a folder bundle: keep assets/ and referenced images beside it.
@@ -868,7 +869,7 @@ def build(temp_dir, formats="html,pdf", editions="mono,bilingual,gov_doc", mono_
             outputs["html"] = {"path": str(html_path), "status": "generated", "sha256": digest(html_path.read_bytes()), "prerequisite": "html" not in formats}
             if pdf_path:
                 outputs["pdf"] = {"path": str(pdf_path), "status": "generated", "sha256": digest(pdf_path.read_bytes())}
-            if stem != legacy_stem:
+            if legacy_aliases and stem != legacy_stem:
                 shutil.copy2(html_path, dest / (legacy_stem + ".html"))
                 if pdf_path:
                     shutil.copy2(pdf_path, dest / (legacy_stem + ".pdf"))
@@ -883,7 +884,7 @@ def build(temp_dir, formats="html,pdf", editions="mono,bilingual,gov_doc", mono_
                 if not calibre.convert_html_with_calibre(str(native_path), str(native_output), extension, timeout=55, lang=lang, cover=str(dest / cover_name) if cover_name and extension == "epub" else None):
                     raise PublishError(f"{edition} {extension} generation failed")
                 outputs[extension] = {"path": str(native_output), "status": "generated", "sha256": digest(native_output.read_bytes())}
-                if stem != legacy_stem:
+                if legacy_aliases and stem != legacy_stem:
                     shutil.copy2(native_output, dest / (legacy_stem + "." + extension))
         result["qa"]["acceptance"] = _acceptance(acceptance_path, result)
         result["status"] = "accepted" if result["qa"]["acceptance"]["status"] == "accepted" else "generated"
@@ -907,6 +908,7 @@ def main(argv=None):
     parser.add_argument("--mono-preset", choices=["original", "gov_doc"])
     for option in ("title", "author", "lang", "cover", "output-dir", "browser-path", "acceptance-path", "file-stem", "org-name", "doc-number", "journal", "doi"):
         parser.add_argument("--" + option)
+    parser.add_argument("--legacy-aliases", action="store_true", help="Also generate backward-compatible book.html/book.pdf aliases")
     parser.add_argument("--state", help="Optional additional upstream publication context; the live gate still runs")
     args = vars(parser.parse_args(argv))
     args["state"] = read_json(args["state"]) if args["state"] else None

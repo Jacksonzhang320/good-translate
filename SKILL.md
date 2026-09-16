@@ -183,10 +183,14 @@ Options:
 - `--doi <doi>`: Official publication DOI (auto-infers `DOI〔{Year}〕{short_doi} 号`).
 - `--org-name <header>`: Explicit issuing authority red header text.
 - `--doc-number <number>`: Explicit document issue number.
+- `--legacy-aliases`: Generate backward-compatible `book.html`/`book.pdf` alias copies (default: false, strictly avoiding redundant duplicate files).
 
 The versioned publisher validates exact document coverage, assets, formulas,
 fonts, MathJax readiness, overflow, image decoding, and PDF creation. It writes
-`build_result.json` with status `generated`.
+`build_result.json` with status `generated`. By default, only the canonical
+semantic files (`{Title}_{Edition}`) are produced, eliminating redundant double
+copies. When delivering or presenting outputs to the user, deliver only the
+canonical edition files and required `assets/`.
 
 Create contact sheets for generated PDFs and inspect them using [qa.md](references/qa.md).
 Check the Official Document edition (`gov_doc`):

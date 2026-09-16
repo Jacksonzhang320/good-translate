@@ -157,6 +157,14 @@ class GovDocEditionTests(unittest.TestCase):
         self.assertIn('<span class="gov-ref-num">3. </span>', html)
         self.assertIn('<h2 class="gov-appendix-title">附录：研究方法</h2>', html)
 
+    def test_legacy_aliases_flag_controls_duplicate_saving(self):
+        # Verify that publish._semantic_stem produces the semantic name and legacy alias is distinct
+        stem = publish._semantic_stem(self.doc, self.translations, "gov_doc", None, "测试论文")
+        legacy_stem = "book_gov"
+        self.assertNotEqual(stem, legacy_stem)
+        self.assertIn("测试论文", stem)
+        self.assertIn("公文版", stem)
+
 
 if __name__ == "__main__":
     unittest.main()

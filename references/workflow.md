@@ -91,6 +91,11 @@ The default build produces both HTML/PDF editions. Use `--formats
 html,pdf,docx,epub` only when additional formats are requested. HTML files are
 bundles: keep their sibling `assets/` directory.
 
+Outputs are generated strictly once per requested edition (`{Title}_{Edition}.pdf` / `.html`).
+Do not generate or copy redundant backward-compatibility duplicates (`book.html`, `book.pdf`, etc.)
+unless `--legacy-aliases` is explicitly requested. Final deliverables to users must include only the
+semantic edition files and their required `assets/`.
+
 Generation is mechanical. `accept-publish` hashes every artifact again and
 requires a reviewer plus concrete visual evidence. `pipeline.py status` is the
 canonical completion check.

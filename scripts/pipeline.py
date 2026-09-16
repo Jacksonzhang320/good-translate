@@ -442,6 +442,7 @@ def main(argv=None):
     bld.add_argument("--mono-preset", choices=["original", "gov_doc"], help="Preset layout for mono edition (e.g. gov_doc for GB/T 9704-2012)")
     for option in ("title", "author", "lang", "cover", "output-dir", "browser-path", "file-stem", "org-name", "doc-number", "journal", "doi"):
         bld.add_argument("--" + option)
+    bld.add_argument("--legacy-aliases", action="store_true", help="Also generate backward-compatible book.html/book.pdf aliases")
     pub = sub.add_parser("accept-publish")
     pub.add_argument("temp_dir")
     pub.add_argument("--reviewer", required=True)
@@ -478,7 +479,8 @@ def main(argv=None):
                           org_name=getattr(args, "org_name", None),
                           doc_number=getattr(args, "doc_number", None),
                           journal=getattr(args, "journal", None),
-                          doi=getattr(args, "doi", None))
+                          doi=getattr(args, "doi", None),
+                          legacy_aliases=getattr(args, "legacy_aliases", False))
         elif args.cmd == "accept-publish":
             value = accept_publish(args.temp_dir, args.reviewer, args.evidence)
         elif args.cmd == "status":
