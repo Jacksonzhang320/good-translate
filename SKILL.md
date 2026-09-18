@@ -1,6 +1,6 @@
 ---
 name: good-translate
-description: Reliably translate PDF books and papers while preserving the source page feel, reading order, complete figures, captions, tables, and formulas. Produces Chinese and interleaved bilingual HTML/PDF by default, supports scanned PDF OCR, resumable parallel chunks, per-book style instructions, and optional DOCX/EPUB. Also retains a compatibility route for DOCX/EPUB inputs.
+description: 高保真翻译 PDF 图书与学术论文（Reliably translate PDF books and papers）。保留原版式、双栏几何排版、完整图片、图注、表格与独立公式。默认一键输出三种标准格式：期刊原版、双语对照版和党政机关公文版（GB/T 9704—2012 / GB/T 7714—2015/2025）。具备跨栏跨页断句自动缝合、8子代理并行隔离翻译、术语反馈闭环防死锁收敛、学术文献元数据主动检索门禁。触发词：good translate、translate、翻译、论文翻译、PDF翻译、图书翻译、书籍翻译、双语翻译、公文版翻译。
 allowed-tools: Read, Write, Edit, Bash, Glob, Grep, Agent, AskUserQuestion
 metadata: {"openclaw":{"requires":{"bins":["uv"]},"homepage":"https://github.com/Jacksonzhang320/good-translate"}}
 ---
