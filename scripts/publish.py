@@ -566,6 +566,25 @@ def make_html(doc, style, translations, edition, title, author, lang, cover=None
         for b in ordered_blocks:
             if b.get("kind") == "caption" and b.get("caption_of") in table_ids:
                 caption_for_table[b.get("caption_of")] = b
+
+        # Fallback: for tables without explicit caption_of, check adjacent blocks for "表 N" / "Table N"
+        for idx, b in enumerate(ordered_blocks):
+            if b.get("kind") == "table" and b["id"] not in caption_for_table:
+                # Check next block
+                if idx + 1 < len(ordered_blocks):
+                    nxt = ordered_blocks[idx + 1]
+                    nxt_txt = translations.get(nxt["id"], nxt.get("text", "")).strip()
+                    orig_txt = nxt.get("text", "").strip()
+                    if re.match(r"^(?:表|附表|Table)\s*\d+", nxt_txt, re.I) or re.match(r"^(?:表|附表|Table)\s*\d+", orig_txt, re.I):
+                        caption_for_table[b["id"]] = nxt
+                # Check prev block
+                if b["id"] not in caption_for_table and idx > 0:
+                    prv = ordered_blocks[idx - 1]
+                    prv_txt = translations.get(prv["id"], prv.get("text", "")).strip()
+                    orig_txt = prv.get("text", "").strip()
+                    if re.match(r"^(?:表|附表|Table)\s*\d+", prv_txt, re.I) or re.match(r"^(?:表|附表|Table)\s*\d+", orig_txt, re.I):
+                        caption_for_table[b["id"]] = prv
+
         if caption_for_table:
             reordered = []
             handled_captions = set()
@@ -580,6 +599,7 @@ def make_html(doc, style, translations, edition, title, author, lang, cover=None
                 else:
                     reordered.append(b)
             ordered_blocks = reordered
+
 
         # Calculate min_gov_level for relative heading scaling
         non_title_levels = []

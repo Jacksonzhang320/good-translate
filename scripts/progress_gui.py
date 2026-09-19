@@ -53,7 +53,6 @@ class ProgressHUD:
     def _init_window(self):
         self.root.title("good-translate v2.1 进度监控")
         self.root.overrideredirect(True)  # Frameless modern card
-        self.root.attributes("-topmost", self.is_topmost)
         self.root.configure(bg=BORDER_COLOR)
 
         width = 460
@@ -63,6 +62,12 @@ class ProgressHUD:
         pos_x = max(20, screen_w - width - 35)
         pos_y = max(20, screen_h - height - 60)
         self.root.geometry(f"{width}x{height}+{pos_x}+{pos_y}")
+
+        # Force window to appear and stay on top
+        self.root.attributes("-topmost", True)
+        self.root.deiconify()
+        self.root.lift()
+        self.root.focus_force()
 
     def _build_ui(self):
         # Container with 1px border
@@ -223,14 +228,20 @@ class ProgressHUD:
     def _poll_data(self):
         if self.demo:
             self._update_demo_data()
-        elif self.watch_target and self.watch_target.is_file():
+        elif self.watch_target:
             try:
-                mtime = self.watch_target.stat().st_mtime
-                if mtime != self.last_mtime:
-                    self.last_mtime = mtime
-                    with open(self.watch_target, "r", encoding="utf-8") as f:
-                        self.data = json.load(f)
-                    self._render_data()
+                target = Path(self.watch_target)
+                if target.is_file():
+                    mtime = target.stat().st_mtime
+                    if mtime != self.last_mtime:
+                        self.last_mtime = mtime
+                        with open(target, "r", encoding="utf-8") as f:
+                            self.data = json.load(f)
+                        self._render_data()
+                else:
+                    # File doesn't exist yet — show waiting state
+                    if not self.data:
+                        self.lbl_detail.configure(text="⏳ 等待翻译流程启动...")
             except Exception:
                 pass
         self.root.after(300, self._poll_data)

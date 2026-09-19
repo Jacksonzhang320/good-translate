@@ -163,34 +163,57 @@ class ProgressTracker:
         self._save()
 
     def launch_gui(self, force: bool = False) -> bool:
-        """Launch progress_gui.py in a detached, non-blocking background process.
-        
+        """Launch progress_gui.py in a detached, visible desktop window.
+
+        On Windows, uses PowerShell Start-Process so the new process gets the
+        interactive desktop session and the Tkinter window actually appears.
+        Uses pythonw.exe to avoid a flashing black console behind the GUI.
+
         Returns True if process was spawned, False if skipped or errored.
         """
         script_path = Path(__file__).resolve().parent / "progress_gui.py"
         if not script_path.is_file():
             return False
 
+        # In non-Windows headless environments, skip unless forced
         if not force and sys.platform != "win32" and not os.environ.get("DISPLAY"):
             return False
 
-        python_exe = sys.executable
-        cmd = [python_exe, str(script_path), "--watch", str(self.progress_file)]
-
         try:
-            kwargs: Dict[str, Any] = {
-                "stdin": subprocess.DEVNULL,
-                "stdout": subprocess.DEVNULL,
-                "stderr": subprocess.DEVNULL,
-                "close_fds": True,
-            }
             if sys.platform == "win32":
-                flags = subprocess.DETACHED_PROCESS | subprocess.CREATE_NEW_PROCESS_GROUP
-                kwargs["creationflags"] = flags
-            else:
-                kwargs["start_new_session"] = True
+                # Use pythonw.exe (no console) from the same venv
+                venv_scripts = Path(sys.executable).parent
+                pythonw = venv_scripts / "pythonw.exe"
+                if not pythonw.is_file():
+                    pythonw = Path(sys.executable)  # fallback to python.exe
 
-            subprocess.Popen(cmd, **kwargs)
+                # Use PowerShell Start-Process so the child gets the interactive
+                # desktop session (avoids "no display" when launched from a service).
+                ps_cmd = [
+                    "powershell.exe", "-NonInteractive", "-WindowStyle", "Hidden",
+                    "-Command",
+                    f'Start-Process -FilePath "{pythonw}" '
+                    f'-ArgumentList "{script_path}", "--watch", "{self.progress_file}" '
+                    f'-WindowStyle Normal'
+                ]
+                subprocess.Popen(
+                    ps_cmd,
+                    stdin=subprocess.DEVNULL,
+                    stdout=subprocess.DEVNULL,
+                    stderr=subprocess.DEVNULL,
+                    creationflags=subprocess.CREATE_NO_WINDOW,
+                )
+            else:
+                python_exe = sys.executable
+                cmd = [python_exe, str(script_path), "--watch", str(self.progress_file)]
+                subprocess.Popen(
+                    cmd,
+                    stdin=subprocess.DEVNULL,
+                    stdout=subprocess.DEVNULL,
+                    stderr=subprocess.DEVNULL,
+                    start_new_session=True,
+                )
             return True
         except Exception:
             return False
+

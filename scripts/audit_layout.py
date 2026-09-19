@@ -20,8 +20,10 @@ SUSPICIOUS_RUNNING_HEADERS = {
 ALLOWED_END_MATTER = {
     "致谢", "利益冲突", "补充信息", "相关链接", "附录", "作者信息",
     "acknowledgements", "acknowledgments", "competing interests",
-    "conflict of interest", "supplementary information", "author information"
+    "conflict of interest", "supplementary information", "author information",
+    "related links", "related-links", "links"
 }
+
 
 CHINESE_NUMERALS = ["一", "二", "三", "四", "五", "六", "七", "八", "九", "十",
                     "十一", "十二", "十三", "十四", "十五", "十六", "十七", "十八", "十九", "二十"]
@@ -76,27 +78,12 @@ def audit_html_content(content: str, filename: str = "", html_path: Path | None 
         or bool(soup.find("main", attrs={"data-edition": "gov_doc"}))
         or bool(soup.find(class_="gov-header") or soup.find(class_="gov-org-name"))
     )
-    is_bilingual = (
-        "bilingual" in filename.lower()
-        or "双语" in filename
-        or bool(soup.find("main", attrs={"data-edition": "bilingual"}))
-        or bool(soup.find(class_=re.compile(r"\borig\b")))
-    )
 
     issues = []
     
     # Audit Terminology Consistency against Glossary
-    # In bilingual editions, skip alias-leak checks on orig/source paragraphs
     if glossary_path:
-        if is_bilingual:
-            # Build a soup stripped of orig paragraphs for alias check
-            import copy
-            soup_translated = copy.copy(soup)
-            for orig_el in soup_translated.find_all(class_=re.compile(r"\borig\b")):
-                orig_el.decompose()
-            issues.extend(audit_glossary_consistency(soup_translated, glossary_path))
-        else:
-            issues.extend(audit_glossary_consistency(soup, glossary_path))
+        issues.extend(audit_glossary_consistency(soup, glossary_path))
     
     # 1. Audit Header Metadata (gov_doc specific)
     if is_gov_doc:
@@ -326,27 +313,39 @@ def audit_html_content(content: str, filename: str = "", html_path: Path | None 
             "message": "检测到正文中泄漏了未清洗的出版日期草稿占位符 (在线发表日期：xx xx xxxx)"
         })
 
-    body_ps = soup.find_all("p")
-    for p in body_ps:
-        if p.find_parent(class_=re.compile(r"ref|reference|footnote")):
-            continue
-        # In bilingual editions, paragraphs with class "orig" (or inside an .orig
-        # container) are intentionally English source paragraphs — skip them.
-        if is_bilingual and (
-            "orig" in p.get("class", [])
-            or p.find_parent(class_=re.compile(r"\borig\b|\bsource\b|\bbilingual-source\b"))
-        ):
-            continue
-        txt = p.get_text(strip=True)
-        if len(txt) > 100 and not any(allowed in txt.lower() for allowed in ALLOWED_END_MATTER):
-            ascii_chars = sum(1 for c in txt if ord(c) < 128)
-            if ascii_chars / len(txt) > 0.85:
-                issues.append({
-                    "severity": "error",
-                    "code": "untranslated_body_text",
-                    "message": f"检测到疑似大段未翻译英文正文 ({len(txt)} 字符): '{txt[:60]}...'"
-                })
-                break
+    is_bilingual = "bilingual" in filename or "双语对照" in filename or bool(soup.find("main", attrs={"data-edition": "bilingual"})) or bool(soup.find(class_=re.compile(r"bilingual|parallel", re.I)))
+    if not is_bilingual:
+        body_ps = soup.find_all(["p", "div"])
+        for p in body_ps:
+            if p.find_parent(class_=re.compile(r"ref|reference|footnote|author|affiliation|byline|gov-header|cover|meta", re.I)):
+                continue
+            p_class = " ".join(p.get("class", []))
+            if re.search(r"author|affiliation|byline|gov-header|cover|meta", p_class, re.I):
+                continue
+
+            txt = p.get_text(strip=True)
+            # Skip if paragraph is an author list (contains numbers mixed with English names, e.g. "Name1,2,3")
+            if re.search(r"^[A-Z][a-z]+(?:\s+[A-Z][a-z]+)*\s*\d+(?:,\d+)*", txt):
+                continue
+            # Skip if paragraph is an author affiliation block (e.g. "1Department of Medicine...")
+            if re.search(r"^\d*\s*(?:Department|School|Center|Centre|Institute|University|Faculty|Laborat|Hospital)", txt, re.I) or "department of" in txt.lower() or "university of" in txt.lower() or "school of" in txt.lower():
+                continue
+            # Skip if paragraph contains web links/URLs or DOI/Zenodo/GitHub references
+            if re.search(r"https?://|doi\.org|zenodo\.org|github\.com|arxiv\.org", txt, re.I):
+                continue
+
+            if len(txt) > 100 and not any(allowed in txt.lower() for allowed in ALLOWED_END_MATTER):
+                ascii_chars = sum(1 for c in txt if ord(c) < 128)
+                if ascii_chars / len(txt) > 0.85:
+                    issues.append({
+                        "severity": "error",
+                        "code": "untranslated_body_text",
+                        "message": f"检测到疑似大段未翻译英文正文 ({len(txt)} 字符): '{txt[:60]}...'"
+                    })
+                    break
+
+
+
 
     # 8. Summary determination
     has_errors = any(i["severity"] == "error" for i in issues)
