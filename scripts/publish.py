@@ -41,6 +41,8 @@ MAJOR_KEYWORDS = {
 REF_KEYWORDS = {"references", "参考文献", "reference", "主要参考文献"}
 METHODS_KEYWORDS = {"methods", "methodology", "方法", "研究方法", "材料与方法"}
 APPENDIX_KEYWORDS = {"appendix", "附录", "附件", "reporting summary", "报告摘要", "extended data", "扩展数据", "补充信息", "supplementary information"}
+RUNNING_HEADERS = {"perspective", "review", "article", "analysis", "commentary", "brief communication", "letter", "述评", "综述", "文章", "评论", "快讯"}
+
 
 
 
@@ -428,6 +430,10 @@ h5,h6 {{ font-family: "FangSong_GB2312", "FangSong", "仿宋", "STFangsong", ser
 .gov-ref-num {{ font-family: "Times New Roman", serif !important; }}
 .footnote {{ font-size: 14pt; font-family: "FangSong_GB2312", "FangSong", serif; }}
 .footnote p {{ text-indent: 0; }}
+.table {{ break-inside: avoid; margin: 0.8em 0 0.3em; text-align: center; text-indent: 0; }}
+.table p {{ text-indent: 0; margin: 0; }}
+.table img {{ display: block; margin: 0 auto; max-width: 100%; max-height: {max_img_h}pt; height: auto; object-fit: contain; }}
+p:has(img) {{ text-indent: 0; }}
 img {{ max-width: 100%; max-height: {max_img_h}pt; height: auto; object-fit: contain; }}
 table {{ border-collapse: collapse; width: 100%; margin: 1em auto; font-family: "FangSong_GB2312", "FangSong", serif; font-size: 14pt; border-top: 1.5pt solid #000; border-bottom: 1.5pt solid #000; text-indent: 0; }}
 th {{ font-family: "SimHei", "黑体", sans-serif; font-weight: normal; border-bottom: 1pt solid #000; padding: 0.4em; text-align: center; }}
@@ -539,6 +545,7 @@ def make_html(doc, style, translations, edition, title, author, lang, cover=None
     in_refs = False
     ref_sec_count = 0
     saw_methods = False
+    ref_items = []
     for block in doc["blocks"]:
         key, kind = block["id"], block["kind"]
         refs = block.get("source_refs", [])
@@ -578,6 +585,10 @@ def make_html(doc, style, translations, edition, title, author, lang, cover=None
             trans_l = cleaned_trans.lower()
             orig_l = cleaned_orig.lower()
 
+            if orig_l in RUNNING_HEADERS or trans_l in RUNNING_HEADERS:
+                body.append(f'<div class="block running-header" {attrs} style="display:none;"></div>')
+                continue
+
             is_ref_heading = (trans_l in REF_KEYWORDS) or (orig_l in REF_KEYWORDS) or ("reference" in orig_l) or ("参考文献" in trans_l)
             is_methods_heading = (trans_l in METHODS_KEYWORDS) or (orig_l in METHODS_KEYWORDS)
             is_appendix_heading = (trans_l in APPENDIX_KEYWORDS) or (orig_l in APPENDIX_KEYWORDS) or any(k in orig_l for k in ("reporting summary", "extended data"))
@@ -586,6 +597,11 @@ def make_html(doc, style, translations, edition, title, author, lang, cover=None
                 saw_methods = True
 
             if is_ref_heading:
+                if ref_items:
+                    ref_items.sort(key=lambda x: x[0])
+                    for _, snippet in ref_items:
+                        body.append(snippet)
+                    ref_items = []
                 in_refs = True
                 ref_sec_count += 1
                 is_methods_refs = (ref_sec_count > 1) or saw_methods
@@ -598,10 +614,20 @@ def make_html(doc, style, translations, edition, title, author, lang, cover=None
                     else:
                         ref_text = "参考文献" if edition == "mono" else ("References" if lang.startswith("en") else "参考文献 / References")
                     value = f'<h2 class="ref-title">{ref_text}</h2>'
+                body.append(f'<section class="{classes}" {attrs}>{value}</section>')
+                continue
             else:
                 level = int(_number(block.get("level"), 2, 1, 6))
-                if in_refs and (is_methods_heading or is_appendix_heading or level <= 2 or trans_l in MAJOR_KEYWORDS or orig_l in MAJOR_KEYWORDS):
-                    in_refs = False
+                is_endmatter = (trans_l in {"致谢", "利益冲突", "相关链接", "补充信息", "作者贡献", "数据可用性", "代码可用性", "作者信息", "附录"} or
+                                orig_l in {"acknowledgements", "acknowledgments", "competing interests", "conflict of interest", "additional information", "related links", "author contributions", "data availability", "code availability", "author information", "appendix"})
+                if in_refs:
+                    if is_methods_heading or is_appendix_heading or is_endmatter:
+                        if ref_items:
+                            ref_items.sort(key=lambda x: x[0])
+                            for _, snippet in ref_items:
+                                body.append(snippet)
+                            ref_items = []
+                        in_refs = False
 
                 if is_gov:
                     if level == 1:
@@ -613,7 +639,7 @@ def make_html(doc, style, translations, edition, title, author, lang, cover=None
                         subsec_count = 0
                         value = f'<h2 class="gov-appendix-title">附录：{html.escape(cleaned_trans)}</h2>'
                     else:
-                        is_major = (level == 2) or (trans_l in MAJOR_KEYWORDS) or (orig_l in MAJOR_KEYWORDS)
+                        is_major = (level == 2) or (trans_l in MAJOR_KEYWORDS) or (orig_l in MAJOR_KEYWORDS) or (trans_l == "致谢" or orig_l.startswith("acknowledg"))
                         if is_major:
                             sec_count += 1
                             subsec_count = 0
@@ -634,12 +660,14 @@ def make_html(doc, style, translations, edition, title, author, lang, cover=None
             # The image is an explicit source fallback, never raw unrendered TeX.
             value = f'<img src="{html.escape(fallback, quote=True)}" alt="Source formula {key}">'
         elif in_refs and kind == "text":
-            m_ref = re.match(r"^(?:(\d+)[\.、]|\[(\d+)\])\s*(.*)$", original.strip(), re.DOTALL)
+            orig_ref = re.sub(r"^(?:perspective|review|述评|综述)\s*", "", original.strip(), flags=re.I)
+            trans_ref = re.sub(r"^(?:perspective|review|述评|综述)\s*", "", translated.strip(), flags=re.I)
+            m_ref = re.match(r"^(?:(\d+)[\.、]|\[(\d+)\])\s*(.*)$", orig_ref, re.DOTALL)
             if not m_ref:
-                m_ref = re.match(r"^(?:(\d+)[\.、]|\[(\d+)\])\s*(.*)$", translated.strip(), re.DOTALL)
+                m_ref = re.match(r"^(?:(\d+)[\.、]|\[(\d+)\])\s*(.*)$", trans_ref, re.DOTALL)
 
             ref_num = (m_ref.group(1) or m_ref.group(2)) if m_ref else ""
-            ref_body = m_ref.group(3) if m_ref else translated.strip()
+            ref_body = m_ref.group(3) if m_ref else trans_ref
             body_html = markdown_html(ref_body).strip()
             body_html = re.sub(r"^<p>(.*)</p>$", r"\1", body_html, flags=re.S)
 
@@ -657,9 +685,9 @@ def make_html(doc, style, translations, edition, title, author, lang, cover=None
                     else:
                         value = f'<p class="ref-entry">{body_html}</p>'
                 else:
-                    trans_html = markdown_html(translated.strip()).strip()
+                    trans_html = markdown_html(trans_ref).strip()
                     trans_html = re.sub(r"^<p>(.*)</p>$", r"\1", trans_html, flags=re.S)
-                    orig_html = markdown_html(original.strip()).strip()
+                    orig_html = markdown_html(orig_ref).strip()
                     orig_html = re.sub(r"^<p>(.*)</p>$", r"\1", orig_html, flags=re.S)
                     prefix = f'<span class="ref-num">[{ref_num}] </span>' if ref_num else ""
                     value = f'<div class="ref-entry">{prefix}<div class="orig">{orig_html}</div><div class="trans">{trans_html}</div></div>'
@@ -669,6 +697,10 @@ def make_html(doc, style, translations, edition, title, author, lang, cover=None
                     value = f'<p class="ref-entry"><span class="ref-num">[{ref_num}] </span>{body_html}</p>'
                 else:
                     value = f'<p class="ref-entry">{body_html}</p>'
+            snippet = f'<section class="{classes}" {attrs}>{value}</section>'
+            num_key = int(ref_num) if (ref_num and ref_num.isdigit()) else 999999
+            ref_items.append((num_key, snippet))
+            continue
         elif edition == "bilingual" and block["translatable"] and kind not in {"figure", "formula"}:
             # An inline image also appears once: place it outside both languages.
             image_tokens = IMAGE_RE.findall(original)
@@ -681,6 +713,11 @@ def make_html(doc, style, translations, edition, title, author, lang, cover=None
         else:
             value = _block_html(block, translated)
         body.append(f'<section class="{classes}" {attrs}>{value}</section>')
+    if ref_items:
+        ref_items.sort(key=lambda x: x[0])
+        for _, snippet in ref_items:
+            body.append(snippet)
+        ref_items = []
     math = any(MATH_RE.search(block["text"]) or "<math" in block["text"] for block in doc["blocks"]) and not formula_images
     math_script = """
 <script>window.MathJax={loader:{load:[]},tex:{packages:{'[-]':['autoload']},inlineMath:[['$','$'],['\\\\(','\\\\)']],displayMath:[['$$','$$'],['\\\\[','\\\\]']],macros:{boldsymbol:['\\\\mathbf{#1}',1],bm:['\\\\mathbf{#1}',1]}},svg:{fontCache:'local'},options:{enableMenu:false},startup:{ready(){MathJax.startup.defaultReady();MathJax.startup.promise.then(()=>{window.tbMathReady=true;}).catch(e=>{window.tbMathError=String(e);});}}};</script>
@@ -886,6 +923,11 @@ def build(temp_dir, formats="html,pdf", editions="mono,bilingual,gov_doc", mono_
                 outputs[extension] = {"path": str(native_output), "status": "generated", "sha256": digest(native_output.read_bytes())}
                 if legacy_aliases and stem != legacy_stem:
                     shutil.copy2(native_output, dest / (legacy_stem + "." + extension))
+        try:
+            import audit_layout
+            result["qa"]["layout_matrix"] = audit_layout.audit_publication_dir(dest)
+        except Exception as _e:
+            result["qa"]["layout_matrix"] = {"status": "unverified", "error": str(_e)}
         result["qa"]["acceptance"] = _acceptance(acceptance_path, result)
         result["status"] = "accepted" if result["qa"]["acceptance"]["status"] == "accepted" else "generated"
     except Exception as exc:

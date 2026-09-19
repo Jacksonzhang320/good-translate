@@ -70,7 +70,9 @@ def validate_translation(source_text, output_text, blocks=None):
             errors.append(f'{block_id}: heading level changed')
         if descriptor.get('kind') == 'table':
             if '<table' in original.lower():
-                shape = lambda value: re.findall(r'<[^>]+>', value)
+                # Compare only structural table tags (table, thead, tbody, tfoot, tr, th, td)
+                # to allow inline formatting (sup, sub, em, strong, span) within table cells.
+                shape = lambda value: [m.lower() for m in re.findall(r'</?(?:table|thead|tbody|tfoot|tr|th|td)\b', value, re.I)]
             else:
                 shape = lambda value: [len(re.findall(r'(?<!\\)\|', line))
                                        for line in value.splitlines() if line.strip()]

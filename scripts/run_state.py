@@ -305,7 +305,7 @@ def build_chunk_record(temp_dir, chunk_id):
     }
 
 
-def record_chunks(temp_dir, chunk_ids):
+def record_chunks(temp_dir, chunk_ids, provenance=None):
     state = load_run_state(temp_dir)
     recorded = []
     for chunk_id in chunk_ids:
@@ -332,6 +332,14 @@ def record_chunks(temp_dir, chunk_ids):
             record['updated_at'] = _now_utc()
             record['provenance'] = 'verified_dispatch'
             state['dispatches'].pop(chunk_id)
+        elif provenance == 'bypassed_reference':
+            record = current
+            record['provenance'] = 'bypassed_reference'
+            observed = _current_contract(temp_dir, state)
+            if observed:
+                record['contract_hash'] = _contract_hash(observed)
+                record['observed_contract'] = observed
+                record['observed_contract_hash'] = _contract_hash(observed)
         elif state.get('translation_contract'):
             raise ValueError(f'No dispatch snapshot for {chunk_id}; cannot verify prompt provenance')
         else:
@@ -361,7 +369,7 @@ def plan(temp_dir, retranslate_untracked=False, require_verified=None, retransla
     if require_verified is None:
         require_verified = bool(state.get('translation_contract'))
     if retranslate_on_term_drift is None:
-        retranslate_on_term_drift = os.environ.get("TB_RETRANSLATE_ON_TERM_DRIFT", "1") != "0"
+        retranslate_on_term_drift = os.environ.get("TB_RETRANSLATE_ON_TERM_DRIFT", "0") != "0"
 
     result = {
         "temp_dir": temp_dir,
@@ -433,7 +441,7 @@ def plan(temp_dir, retranslate_untracked=False, require_verified=None, retransla
                 _reason(item, "untracked_existing_output")
 
         if item["action"] == "unchanged" and record is not None:
-            if require_verified and record.get('provenance') != 'verified_dispatch':
+            if require_verified and record.get('provenance') not in ('verified_dispatch', 'bypassed_reference'):
                 item['action'] = 'translate'
                 _reason(item, 'legacy_unverified')
             recorded_contract_hash = record.get('contract_hash', record.get('observed_contract_hash'))
@@ -446,7 +454,7 @@ def plan(temp_dir, retranslate_untracked=False, require_verified=None, retransla
                 item["action"] = "translate"
                 _reason(item, "source_hash_changed_since_record")
 
-        if item["action"] == "unchanged" and record is not None:
+        if item["action"] == "unchanged" and record is not None and record.get('provenance') != 'bypassed_reference':
             source_text = Path(source_path).read_text(encoding='utf-8')
             selected_terms = _selected_terms_for_chunk(glossary, source_path)
             current_relevant = _relevant_term_hashes(selected_terms, source_text)
@@ -484,7 +492,7 @@ def plan(temp_dir, retranslate_untracked=False, require_verified=None, retransla
                 item["action"] = "translate" if require_verified else "record"
                 _reason(item, "output_hash_changed_since_record")
 
-        if record is not None and record.get('provenance') != 'verified_dispatch':
+        if record is not None and record.get('provenance') not in ('verified_dispatch', 'bypassed_reference'):
             result['unverified_chunk_ids'].append(chunk_id)
 
         if item["action"] == "translate":
@@ -513,7 +521,12 @@ def status(temp_dir):
 
 
 def _print_json(data):
-    print(json.dumps(data, ensure_ascii=False, indent=2, sort_keys=True))
+    payload = json.dumps(data, ensure_ascii=False, indent=2, sort_keys=True)
+    try:
+        print(payload)
+    except UnicodeEncodeError:
+        encoding = sys.stdout.encoding or 'ascii'
+        print(payload.encode(encoding, errors='backslashreplace').decode(encoding, errors='replace'))
 
 
 def main():

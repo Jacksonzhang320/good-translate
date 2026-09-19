@@ -175,7 +175,7 @@ class RunStateTests(unittest.TestCase):
                 temp_dir / "glossary.json",
                 json.dumps(glossary_doc(aliases=["Taig"]), ensure_ascii=False),
             )
-            plan = run_state.plan(str(temp_dir))
+            plan = run_state.plan(str(temp_dir), retranslate_on_term_drift=True)
 
         self.assertEqual(plan["translation_chunk_ids"], ["chunk0001"])
 

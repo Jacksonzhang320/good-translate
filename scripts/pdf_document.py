@@ -278,6 +278,13 @@ def _append(blocks, kind, text, page, box, **extra):
     return block
 
 
+SUSPICIOUS_RUNNING_HEADERS = {
+    'perspective', 'review', 'article', 'analysis', 'commentary',
+    'brief communication', 'letter', 'research article',
+    '述评', '综述', '文章', '评论', '快讯', '通讯'
+}
+
+
 def _mineru_blocks(pdf, pages, mineru_dir, out_dir, issues):
     middle = norm._find_middle_json(str(mineru_dir))
     if not middle:
@@ -374,7 +381,17 @@ def _mineru_blocks(pdf, pages, mineru_dir, out_dir, issues):
                     continue
                 text = _text(source)
                 if text:
-                    block = _append(blocks, kinds[typ], text, page_num, box)
+                    actual_kind = kinds[typ]
+                    is_running_header = False
+                    if typ == 'title':
+                        clean_title = text.strip().lower()
+                        if clean_title in SUSPICIOUS_RUNNING_HEADERS and box[1] < 120:
+                            actual_kind = 'text'
+                            is_running_header = True
+                    block = _append(blocks, actual_kind, text, page_num, box)
+                    if is_running_header:
+                        block['is_running_header'] = True
+                        block['style_id'] = 'running-header'
                     block['source_refs'] = _text_source_refs(
                         source, page_num, box, deleted_boxes, pages)
                 elif source.get('lines_deleted'):
@@ -395,6 +412,78 @@ _CAPTION = re.compile(r'^(?:(?:Extended Data |Supplementary )?Fig(?:ure)?\.?\s*\
 _NUMBERED_EQ = re.compile(r'^\s*\(\d{1,3}[a-z]?\)\s*$')
 
 
+def _sort_page_blocks(blocks, width, height, columns=1, gap_threshold=20.0):
+    if not blocks or columns <= 1:
+        return sorted(blocks, key=lambda b: (b['source_refs'][0]['bbox'][1], b['source_refs'][0]['bbox'][0]))
+
+    mid_x = width / 2.0
+    sorted_by_y = sorted(blocks, key=lambda b: b['source_refs'][0]['bbox'][1])
+    bands = []
+    current_band = [sorted_by_y[0]]
+    current_max_y1 = sorted_by_y[0]['source_refs'][0]['bbox'][3]
+
+    for b in sorted_by_y[1:]:
+        box = b['source_refs'][0]['bbox']
+        y0, y1 = box[1], box[3]
+        if y0 > current_max_y1 + gap_threshold:
+            bands.append(current_band)
+            current_band = [b]
+            current_max_y1 = y1
+        else:
+            current_band.append(b)
+            if y1 > current_max_y1:
+                current_max_y1 = y1
+    bands.append(current_band)
+
+    result = []
+    for band in bands:
+        if len(band) <= 1:
+            result.extend(band)
+            continue
+
+        spanning = []
+        col_blocks = []
+        for b in band:
+            box = b['source_refs'][0]['bbox']
+            bw = box[2] - box[0]
+            if bw > width * 0.55 or (box[0] < mid_x - 30 and box[2] > mid_x + 30):
+                spanning.append(b)
+            else:
+                col_blocks.append(b)
+
+        if not col_blocks:
+            spanning.sort(key=lambda b: b['source_refs'][0]['bbox'][1])
+            result.extend(spanning)
+            continue
+
+        col_min_y0 = min(b['source_refs'][0]['bbox'][1] for b in col_blocks)
+        col_max_y1 = max(b['source_refs'][0]['bbox'][3] for b in col_blocks)
+
+        top_span = []
+        bottom_span = []
+        mid_span = []
+        for b in spanning:
+            box = b['source_refs'][0]['bbox']
+            if box[3] <= col_min_y0 + 10:
+                top_span.append(b)
+            elif box[1] >= col_max_y1 - 10:
+                bottom_span.append(b)
+            else:
+                mid_span.append(b)
+
+        top_span.sort(key=lambda b: b['source_refs'][0]['bbox'][1])
+        bottom_span.sort(key=lambda b: b['source_refs'][0]['bbox'][1])
+
+        left = sorted([b for b in col_blocks if (b['source_refs'][0]['bbox'][0] + b['source_refs'][0]['bbox'][2]) / 2 < mid_x],
+                      key=lambda b: b['source_refs'][0]['bbox'][1])
+        right = sorted([b for b in col_blocks if (b['source_refs'][0]['bbox'][0] + b['source_refs'][0]['bbox'][2]) / 2 >= mid_x],
+                       key=lambda b: b['source_refs'][0]['bbox'][1])
+
+        result.extend(top_span + left + right + mid_span + bottom_span)
+
+    return result
+
+
 def _geometry_blocks(pdf, pages, out_dir, style, issues, scanning):
     blocks = []
     for index, data in enumerate(pages):
@@ -402,10 +491,13 @@ def _geometry_blocks(pdf, pages, out_dir, style, issues, scanning):
         source_blocks = data['blocks']
         columns = _columns(data['lines'], data['width'])
         if columns > 1:
-            _issue(issues, 'reading_order_unverified', 'Multiple columns require a reviewed layout parse.', page_num)
+            _issue(issues, 'reading_order_column_geometry',
+                   f'Parsed {columns}-column layout using column-aware geometry flow.',
+                   page_num, severity='info', columns=columns)
         if len(data['drawings']) > 15:
-            _issue(issues, 'vector_layout_unverified', 'Dense vector graphics require figure boundaries from a layout parser.', page_num,
-                   drawing_count=len(data['drawings']))
+            _issue(issues, 'vector_layout_unverified',
+                   'Dense vector graphics require figure boundaries from a layout parser.',
+                   page_num, severity='warning', drawing_count=len(data['drawings']))
         if not data['lines']:
             _issue(issues, 'ocr_required', 'No readable text; supply an OCR PDF or MinerU parse.', page_num)
         if scanning:
@@ -419,6 +511,36 @@ def _geometry_blocks(pdf, pages, out_dir, style, issues, scanning):
             box = list(source['bbox'])
             spans = [s for l in lines for s in l.get('spans', []) if s.get('text', '').strip()]
             size = max((s['size'] for s in spans), default=style['body']['font_size_pt'])
+
+            # Split leading heading line if merged into this block by PyMuPDF
+            if len(lines) > 1:
+                first_spans = [s for s in lines[0].get('spans', []) if s.get('text', '').strip()]
+                first_size = max((s['size'] for s in first_spans), default=0)
+                first_text = ''.join(s.get('text', '') for s in lines[0].get('spans', [])).strip()
+                first_font = first_spans[0]['font'].lower() if first_spans else ''
+                is_h_line = (first_size >= style['body']['font_size_pt'] * 1.15 or 'bold' in first_font or 'semibold' in first_font) and len(first_text) < 160
+                rest_spans = [s for l in lines[1:] for s in l.get('spans', []) if s.get('text', '').strip()]
+                rest_size = max((s['size'] for s in rest_spans), default=0)
+                if is_h_line and (first_size > rest_size or 'bold' in first_font or 'semibold' in first_font):
+                    h_box = list(lines[0]['bbox'])
+                    is_running_header = False
+                    clean_h = first_text.lower()
+                    if clean_h in SUSPICIOUS_RUNNING_HEADERS and h_box[1] < 120:
+                        is_running_header = True
+                    h_kind = 'text' if is_running_header else 'heading'
+                    h_obj = _append(blocks, h_kind, first_text, page_num, h_box)
+                    if is_running_header:
+                        h_obj['is_running_header'] = True
+                        h_obj['style_id'] = 'running-header'
+                    lines = lines[1:]
+                    text = norm._join_lines([''.join(s.get('text', '') for s in l.get('spans', [])) for l in lines])
+                    if not text.strip():
+                        continue
+                    box = [min(l['bbox'][0] for l in lines), min(l['bbox'][1] for l in lines),
+                           max(l['bbox'][2] for l in lines), max(l['bbox'][3] for l in lines)]
+                    spans = rest_spans
+                    size = rest_size
+
             if _CAPTION.match(text):
                 kind = 'caption'
             elif size >= style['body']['font_size_pt'] * 1.15 and len(text) < 240:
@@ -430,21 +552,115 @@ def _geometry_blocks(pdf, pages, out_dir, style, issues, scanning):
                     ''.join(s.get('text', '') for s in l.get('spans', []))) for l in lines):
                 md, box = _crop(page, box, out_dir, f'eq-p{page_num:03d}-{pos:03d}')
                 _append(blocks, 'formula', md, page_num, box)
-                _issue(issues, 'formula_boundary_unverified', 'Formula-like text was preserved as a source crop; verify its full boundary.', page_num)
+                _issue(issues, 'formula_boundary_unverified', 'Formula-like text was preserved as a source crop; verify its full boundary.', page_num, severity='warning')
             else:
-                _append(blocks, kind, text, page_num, box)
+                is_running_header = False
+                if kind == 'heading':
+                    clean_h = text.strip().lower()
+                    if clean_h in SUSPICIOUS_RUNNING_HEADERS and box[1] < 120:
+                        kind = 'text'
+                        is_running_header = True
+                b_obj = _append(blocks, kind, text, page_num, box)
+                if is_running_header:
+                    b_obj['is_running_header'] = True
+                    b_obj['style_id'] = 'running-header'
         if not scanning:
-            for seq, info in enumerate(data['images']):
-                box = list(info['bbox'])
-                # Large scan layers must be preserved as a complete source page
-                # rather than treated as an independent semantic figure.
-                if _area(box) >= data['width'] * data['height'] * .75:
+            raw_boxes = [list(info['bbox']) for info in data['images']]
+            merged_boxes = []
+            for b in raw_boxes:
+                if _area(b) >= data['width'] * data['height'] * .75:
                     _issue(issues, 'scan_layout_unverified', 'A page-sized image needs OCR/layout segmentation.', page_num)
                     continue
+                placed = False
+                for m in merged_boxes:
+                    if not (b[0] > m[2] + 10 or b[2] < m[0] - 10 or
+                            b[1] > m[3] + 10 or b[3] < m[1] - 10):
+                        m[0] = min(m[0], b[0])
+                        m[1] = min(m[1], b[1])
+                        m[2] = max(m[2], b[2])
+                        m[3] = max(m[3], b[3])
+                        placed = True
+                        break
+                if not placed:
+                    merged_boxes.append(b)
+
+            changed = True
+            while changed:
+                changed = False
+                consolidated = []
+                for b in merged_boxes:
+                    placed = False
+                    for m in consolidated:
+                        if not (b[0] > m[2] + 10 or b[2] < m[0] - 10 or
+                                b[1] > m[3] + 10 or b[3] < m[1] - 10):
+                            m[0] = min(m[0], b[0])
+                            m[1] = min(m[1], b[1])
+                            m[2] = max(m[2], b[2])
+                            m[3] = max(m[3], b[3])
+                            placed = True
+                            changed = True
+                            break
+                    if not placed:
+                        consolidated.append(b)
+                merged_boxes = consolidated
+
+            # Expand figure boxes with associated captions if present
+            current_page_blocks = [b for b in blocks if b['source_refs'][0]['page'] == page_num]
+            captions_on_page = [b for b in current_page_blocks if b.get('kind') == 'caption']
+            for cap in captions_on_page:
+                cap_box = cap['source_refs'][0]['bbox']
+                cap_y0 = cap_box[1]
+                related = [m for m in merged_boxes if m[3] <= cap_y0 + 20 and m[1] >= 35]
+                if related:
+                    min_img_y0 = min(m[1] for m in related)
+                    body_above = [
+                        b['source_refs'][0]['bbox'] for b in current_page_blocks
+                        if b.get('kind') == 'text' and not b.get('is_running_header') and len(b.get('text', '').strip()) > 50 and b['source_refs'][0]['bbox'][3] < min_img_y0 - 5
+                    ]
+                    top_y = max((b[3] for b in body_above), default=38.0)
+                    if top_y < 50:
+                        top_y = 38.0
+                    else:
+                        top_y += 3.0
+                    bot_y = cap_y0 - 2.0
+                    items_above = [
+                        l['bbox'] for l in data['lines'] if l['bbox'][3] <= cap_y0 + 5 and l['bbox'][1] >= 35
+                    ]
+                    is_spanning = (cap_box[2] - cap_box[0] > data['width'] * 0.55 or
+                                   any(m[2] - m[0] > data['width'] * 0.45 for m in related) or
+                                   any(m[0] < data['width'] * 0.45 and m[2] > data['width'] * 0.55 for m in related) or
+                                   any(b[0] < data['width'] * 0.45 and b[2] > data['width'] * 0.55 for b in items_above))
+                    margin_l = style['page'].get('margin_left_pt', 39.68)
+                    margin_r = style['page'].get('margin_right_pt', 39.68)
+                    if is_spanning:
+                        x0 = margin_l
+                        x1 = data['width'] - margin_r
+                    else:
+                        mid_x = data['width'] / 2.0
+                        if all(m[2] <= mid_x + 20 for m in related):
+                            x0 = margin_l
+                            x1 = mid_x - 10.0
+                        elif all(m[0] >= mid_x - 20 for m in related):
+                            x0 = mid_x + 10.0
+                            x1 = data['width'] - margin_r
+                        else:
+                            x0 = min(m[0] for m in related)
+                            x1 = max(m[2] for m in related)
+                    fig_box = [round(x0, 3), round(top_y, 3), round(x1, 3), round(bot_y, 3)]
+                    merged_boxes = [m for m in merged_boxes if m not in related] + [fig_box]
+
+            for seq, box in enumerate(merged_boxes):
                 md, box = _crop(page, box, out_dir, f'fig-p{page_num:03d}-{seq:03d}')
                 _append(blocks, 'figure', md, page_num, box)
         page_blocks = [b for b in blocks if b['source_refs'][0]['page'] == page_num]
-        page_blocks.sort(key=lambda b: (b['source_refs'][0]['bbox'][1], b['source_refs'][0]['bbox'][0]))
+        figure_boxes = [b['source_refs'][0]['bbox'] for b in page_blocks if b['kind'] == 'figure']
+        if figure_boxes:
+            # Filter out text, heading, or formula blocks that are inside any figure crop
+            page_blocks = [
+                b for b in page_blocks
+                if b['kind'] in ('figure', 'caption') or not _covered(b['source_refs'][0]['bbox'], figure_boxes, threshold=0.6)
+            ]
+        page_blocks = _sort_page_blocks(page_blocks, data['width'], data['height'], columns)
         blocks = [b for b in blocks if b['source_refs'][0]['page'] != page_num] + page_blocks
     return blocks, {}
 
@@ -624,13 +840,36 @@ def build_document(pdf_path, out_dir, mineru_dir=None, ocr_pdf=None):
                 if target_id:
                     block['caption_of'] = target_id
                 else:
-                    _issue(issues, 'unlinked_caption', 'Caption has no identifiable figure/table on its page.', page_num)
+                    _issue(issues, 'unlinked_caption', 'Caption has no identifiable figure/table on its page.', page_num, severity='warning')
+        in_references = False
+        outline = []
+        for block in blocks:
+            txt = block.get('text', '').strip()
+            if block.get('kind') == 'heading':
+                outline.append({
+                    'id': block['id'],
+                    'level': block.get('level', 1),
+                    'text': txt,
+                    'page': block['source_refs'][0]['page']
+                })
+                norm_txt = re.sub(r'^[一二三四五六七八九十\d\.\s、]+', '', txt).strip().lower()
+                if norm_txt in ('references', '参考文献', 'reference'):
+                    in_references = True
+                elif in_references and any(end_word in norm_txt for end_word in (
+                    'acknowledgements', 'acknowledgments', '致谢', '利益冲突',
+                    'competing interests', 'supplementary information', '补充信息',
+                    '附录', 'appendix', 'author information', '作者信息')):
+                    in_references = False
+            elif in_references:
+                block['is_reference'] = True
+
         frozen = [{k: b[k] for k in ('id', 'kind', 'text', 'source_refs', 'level',
-                                    'caption_of', 'translatable', 'fallback_image') if k in b} for b in blocks]
+                                    'caption_of', 'translatable', 'fallback_image',
+                                    'is_running_header', 'is_reference') if k in b} for b in blocks]
         document = {'schema_version': 1, 'doc_id': source_hash,
                     'structure_hash': _digest(frozen),
                     'source': {'path': str(pdf_path), 'sha256': source_hash},
-                    'parser': parser, 'blocks': blocks, 'issues': issues, 'coverage': coverage}
+                    'parser': parser, 'blocks': blocks, 'outline': outline, 'issues': issues, 'coverage': coverage}
         if ocr_pdf:
             document['source']['ocr_path'] = str(Path(ocr_pdf).resolve())
         _json_write(out_dir / 'doc.json', document)

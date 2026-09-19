@@ -36,18 +36,19 @@ class PipelinePublishTests(unittest.TestCase):
         doc.save(path)
         doc.close()
 
-    def test_geometry_rejects_unreviewed_two_column_reading_order(self):
+    def test_geometry_accepts_two_column_reading_order(self):
         with tempfile.TemporaryDirectory() as td:
             root = Path(td)
             source = root / "columns.pdf"
             self.make_pdf(source, two_columns=True)
             report = pipeline.inspect_pdf(source)
-            self.assertEqual(report["recommended_route"], "mineru")
-            with self.assertRaises(pipeline.PipelineError):
-                pipeline.prepare(source, root / "run")
+            self.assertEqual(report["recommended_route"], "geometry")
+            prepared = pipeline.prepare(source, root / "run")
+            self.assertEqual(prepared["status"], "parse_review_pending")
+            self.assertEqual(prepared["blocking_issues"], [])
             state = json.loads((root / "run" / "pipeline_state.json").read_text(encoding="utf-8"))
-            self.assertEqual(state["status"], "parse_failed")
-            self.assertIn("reading_order_unverified", {x["code"] for x in state["blocking_issues"]})
+            codes = {x["code"] for x in state.get("warnings", [])}
+            self.assertIn("reading_order_column_geometry", codes)
 
     def test_full_gate_rejects_truncation_then_accepts_reviewed_outputs(self):
         with tempfile.TemporaryDirectory() as td:

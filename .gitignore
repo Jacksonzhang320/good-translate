@@ -1,5 +1,6 @@
 # Translation temp directories
 *_temp/
+runs/
 
 # Full-pipeline test artifacts
 tests/.artifacts/*

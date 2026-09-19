@@ -16,6 +16,7 @@ import shutil
 import sys
 import tempfile
 
+import audit_layout
 import chunk_context
 import glossary
 import manifest
@@ -117,15 +118,15 @@ def inspect_pdf(pdf_path):
     scan_like = len(low_text) / len(pages) >= .35 or total_chars < max(80, len(pages) * 12)
     two_column = [p["page"] for p in pages if p["columns"] > 1]
     formula_pages = [p["page"] for p in pages if p["math_font_chars"] >= 4 or p["equation_symbols"] >= 3]
-    route = "ocr+mineru" if scan_like else "mineru" if two_column or formula_pages else "geometry"
+    route = "ocr+mineru" if scan_like else "mineru" if formula_pages else "geometry"
     return {"schema_version": 1, "source": str(source), "sha256": digest_file(source),
             "page_count": len(pages), "text_characters": total_chars,
             "scan_like": scan_like, "low_text_pages": [p["page"] for p in low_text],
             "two_column_pages": two_column, "formula_pages": formula_pages,
             "recommended_route": route,
             "reason": ({"ocr+mineru": "insufficient text layer",
-                        "mineru": "complex reading order or formula evidence",
-                        "geometry": "single-column text geometry appears usable"})[route],
+                        "mineru": "complex formula evidence",
+                        "geometry": "native digital vector text with column-aware geometry flow"})[route],
             "pages": pages}
 
 
@@ -137,13 +138,52 @@ def split_document(doc, target_chars):
     if target_chars < 500:
         raise PipelineError("chunk size must be at least 500 characters")
     chunks, current, size = [], [], 0
+    current_is_ref = None
+
     for block in doc["blocks"]:
         text = _marked(block)
-        if current and size + len(text) > target_chars:
+        is_ref = bool(block.get("is_reference"))
+        is_major_heading = block.get("kind") == "heading" and block.get("level", 3) <= 2
+
+        should_split = False
+        if current:
+            # 1. Clean boundary: Never mix body prose and citations in one chunk
+            if current_is_ref is not None and is_ref != current_is_ref:
+                should_split = True
+            # 2. Hard overflow on character count
+            elif size + len(text) > target_chars:
+                should_split = True
+            # 3. Soft boundary at major headings when chunk is sufficiently full (>=60%)
+            elif is_major_heading and size >= int(target_chars * 0.6):
+                should_split = True
+
+        if should_split and current:
             chunks.append("\n".join(current).rstrip() + "\n")
             current, size = [], 0
+
         current.append(text)
         size += len(text)
+        current_is_ref = is_ref
+
+    if current:
+        chunks.append("\n".join(current).rstrip() + "\n")
+    return chunks
+
+
+def split_document_by_cuts(doc, cuts):
+    """Deterministically split doc['blocks'] at specified block IDs into chunk markdown strings."""
+    blocks = doc.get("blocks", [])
+    if not blocks:
+        return []
+    cut_set = set(cuts or [])
+    chunks = []
+    current = []
+    for block in blocks:
+        b_id = block["id"]
+        if b_id in cut_set and current:
+            chunks.append("\n".join(current).rstrip() + "\n")
+            current = []
+        current.append(_marked(block))
     if current:
         chunks.append("\n".join(current).rstrip() + "\n")
     return chunks
@@ -155,7 +195,7 @@ def _blocking_issues(doc):
 
 
 def prepare(pdf_path, temp_dir, target_lang="zh-CN", instructions="", mineru_dir=None,
-            ocr_pdf=None, chunk_size=6000):
+            ocr_pdf=None, chunk_size=12000):
     root = Path(temp_dir).resolve()
     root.mkdir(parents=True, exist_ok=True)
     doc = pdf_document.build_document(pdf_path, root, mineru_dir=mineru_dir, ocr_pdf=ocr_pdf)
@@ -317,9 +357,18 @@ def accept_publish(temp_dir, reviewer, evidence):
     for path, expected in artifacts.items():
         if not Path(path).is_file() or digest_file(path) != expected:
             raise PipelineError(f"Generated artifact changed or is missing: {path}")
+    audit_res = audit_layout.audit_publication_dir(Path(result["output_dir"]))
+    if audit_res.get("status") == "failed":
+        err_msgs = []
+        for fname, ed in audit_res.get("editions", {}).items():
+            for iss in ed.get("issues", []):
+                if iss.get("severity") == "error":
+                    err_msgs.append(f"{fname}: {iss.get('message')}")
+        raise PipelineError(f"Layout audit failed with critical errors: {'; '.join(err_msgs)}")
     record = {"schema_version": 1, "status": "accepted", "accepted_at": now(),
               "render_hash": result["render_hash"], "reviewer": reviewer,
-              "evidence": evidence, "artifacts": artifacts}
+              "evidence": evidence, "artifacts": artifacts,
+              "layout_audit": audit_res.get("status", "passed")}
     acceptance = root / "qa" / "publish_acceptance.json"
     write_json(acceptance, record)
     result["qa"]["acceptance"] = publish._acceptance(acceptance, result)
@@ -327,6 +376,248 @@ def accept_publish(temp_dir, reviewer, evidence):
     write_json(root / "build_result.json", result)
     write_json(Path(result["output_dir"]) / "build_result.json", result)
     return result
+
+
+def outline(temp_dir):
+    root = Path(temp_dir).resolve()
+    doc_path = root / "doc.json"
+    if not doc_path.is_file():
+        raise PipelineError("doc.json not found; run prepare first")
+    doc = read_json(doc_path)
+    entries = doc.get("outline", [])
+    if not entries:
+        for b in doc.get("blocks", []):
+            if b.get("kind") == "heading":
+                entries.append({
+                    "id": b["id"],
+                    "level": b.get("level", 1),
+                    "text": b.get("text", "").strip(),
+                    "page": b.get("source_refs", [{}])[0].get("page", 1)
+                })
+
+    suspicious_words = {"perspective", "review", "article", "analysis", "commentary",
+                        "brief communication", "letter", "述评", "综述", "文章", "评论", "快讯"}
+    warnings = []
+    lines = []
+    for item in entries:
+        txt = item["text"]
+        norm_txt = re.sub(r"^[一二三四五六七八九十\d\.\s、]+", "", txt).strip().lower()
+        is_suspicious = norm_txt in suspicious_words
+        tag = " [WARN: 疑似页眉]" if is_suspicious else ""
+        if is_suspicious:
+            warnings.append(f"{item['id']} (p.{item['page']}): 疑似走马页眉 '{txt}' 被列为第 {item['level']} 级标题")
+        indent = "  " * (item["level"] - 1)
+        lines.append(f"{indent}- [p.{item['page']:02d}] [L{item['level']}] [{item['id']}] {txt}{tag}")
+
+    return {
+        "status": "warning" if warnings else "passed",
+        "total_headings": len(entries),
+        "warnings": warnings,
+        "outline_tree": "\n".join(lines),
+        "headings": entries
+    }
+
+
+def plan_split(temp_dir, target_chars=12000):
+    root = Path(temp_dir).resolve()
+    doc_path = root / "doc.json"
+    if not doc_path.is_file():
+        raise PipelineError("doc.json not found; run prepare first")
+    doc = read_json(doc_path)
+    blocks = doc.get("blocks", [])
+    if not blocks:
+        return {"status": "failed", "error": "doc.json has no blocks"}
+
+    landmarks = []
+    cum_chars = 0
+    ref_started = False
+
+    for i, b in enumerate(blocks):
+        b_id = b.get("id", f"b{i+1:06d}")
+        text = b.get("text", "").strip()
+        kind = b.get("kind", "text")
+        page = b.get("source_refs", [{}])[0].get("page", 1)
+        b_len = len(text)
+
+        is_ref = bool(b.get("is_reference")) or (
+            kind == "heading" and bool(re.match(r"^(?:references?|bibliography|参考文献)\b", text, re.I))
+        )
+        if is_ref and not ref_started:
+            ref_started = True
+            landmarks.append({
+                "id": b_id,
+                "page": page,
+                "kind": "references",
+                "text": text[:80],
+                "char_offset": cum_chars
+            })
+        elif kind == "heading":
+            if not b.get("is_running_header") and b.get("style_id") != "running-header":
+                landmarks.append({
+                    "id": b_id,
+                    "page": page,
+                    "kind": "heading",
+                    "text": text[:80],
+                    "char_offset": cum_chars
+                })
+        cum_chars += b_len
+
+    suggested_cuts = []
+    last_cut_offset = 0
+
+    for item in landmarks:
+        offset_since_last = item["char_offset"] - last_cut_offset
+        if item["kind"] == "references":
+            if offset_since_last >= 500:
+                suggested_cuts.append(item["id"])
+                last_cut_offset = item["char_offset"]
+        elif offset_since_last >= int(target_chars * 0.70):
+            suggested_cuts.append(item["id"])
+            last_cut_offset = item["char_offset"]
+
+    tree_lines = []
+    for item in landmarks:
+        is_cut = " [SUGGESTED CUT]" if item["id"] in suggested_cuts else ""
+        tree_lines.append(f"[{item['id']}] (p.{item['page']:02d}, offset {item['char_offset']}) {item['kind']}: {item['text']}{is_cut}")
+
+    return {
+        "status": "success",
+        "total_blocks": len(blocks),
+        "total_chars": cum_chars,
+        "target_chars": target_chars,
+        "estimated_chunks": len(suggested_cuts) + 1,
+        "suggested_cuts": suggested_cuts,
+        "outline_tree": "\n".join(tree_lines),
+        "landmarks": landmarks
+    }
+
+
+def split_run(temp_dir, cuts=None, chunk_size=12000):
+    root = Path(temp_dir).resolve()
+    doc_path = root / "doc.json"
+    if not doc_path.is_file():
+        raise PipelineError(f"doc.json missing from {temp_dir}; run prepare first")
+    doc = read_json(doc_path)
+
+    r_state = run_state.load_run_state(str(root))
+    if r_state.get("dispatches") or r_state.get("recorded"):
+        raise PipelineError("Translation already in progress; cannot re-split chunks")
+
+    if cuts:
+        chunk_texts = split_document_by_cuts(doc, cuts)
+        split_method = "agent-outline-cuts"
+    else:
+        plan = plan_split(temp_dir, target_chars=chunk_size)
+        suggested = plan.get("suggested_cuts", [])
+        if suggested:
+            chunk_texts = split_document_by_cuts(doc, suggested)
+            split_method = "agent-outline-cuts"
+            cuts = suggested
+        else:
+            chunk_texts = split_document(doc, chunk_size)
+            split_method = "block-boundary-v1"
+
+    names = [f"chunk{index:04d}.md" for index in range(1, len(chunk_texts) + 1)]
+
+    for old_file in root.glob("chunk*.md"):
+        try:
+            old_file.unlink()
+        except OSError:
+            pass
+
+    for name, text in zip(names, chunk_texts):
+        (root / name).write_text(text, encoding="utf-8")
+
+    split_contract = {
+        "method": split_method,
+        "target_chars": chunk_size if not cuts else "custom",
+        "cuts": cuts or [],
+        "chunk_count": len(names),
+        "structure_hash": doc["structure_hash"]
+    }
+    manifest.create_manifest(
+        str(root),
+        names,
+        str(root / "input.md"),
+        expected_block_ids=[b["id"] for b in doc["blocks"]],
+        split_contract=split_contract,
+        doc_path=root / "doc.json",
+        expected_chunk_files=names
+    )
+
+    state_path = root / "pipeline_state.json"
+    if state_path.is_file():
+        state = read_json(state_path)
+        state["chunks"] = len(names)
+        write_json(state_path, state)
+
+    return {
+        "status": "success",
+        "chunk_count": len(names),
+        "chunk_files": names,
+        "method": split_method,
+        "cuts": cuts or []
+    }
+
+
+def bypass_references(temp_dir):
+    """Automatically populate verbatim output for pure reference chunks to bypass translation LLM."""
+    root = Path(temp_dir).resolve()
+    doc_path = root / "doc.json"
+    manifest_path = root / "manifest.json"
+    if not doc_path.is_file() or not manifest_path.is_file():
+        raise PipelineError("doc.json and manifest.json are required")
+    doc = read_json(doc_path)
+    ref_block_ids = {
+        b["id"] for b in doc.get("blocks", [])
+        if b.get("is_reference") or (
+            b.get("kind") == "heading" and any(w in b.get("text", "").lower() for w in ("references", "参考文献", "bibliography"))
+        )
+    }
+
+    if not ref_block_ids:
+        in_refs = False
+        for b in doc.get("blocks", []):
+            txt = b.get("text", "").strip().lower()
+            if b.get("kind") == "heading":
+                if any(w in txt for w in ("references", "参考文献")):
+                    in_refs = True
+                elif in_refs and any(w in txt for w in ("acknowledgements", "致谢", "利益冲突", "附录")):
+                    in_refs = False
+            elif in_refs:
+                ref_block_ids.add(b["id"])
+
+    mf = read_json(manifest_path)
+    bypassed_chunks = []
+    for chunk in mf.get("chunks", []):
+        cid = chunk["id"]
+        source_path = root / chunk["source_file"]
+        output_path = root / chunk["output_file"]
+        meta_path = root / f"output_{cid}.meta.json"
+
+        src_text = source_path.read_text(encoding="utf-8")
+        chunk_bids = set(re.findall(r"^<!--\s*tb:(b\d+)\s*-->", src_text, re.M))
+        if chunk_bids and chunk_bids.issubset(ref_block_ids):
+            output_path.write_text(src_text, encoding="utf-8")
+            empty_meta = {
+                "schema_version": 1,
+                "new_entities": [],
+                "alias_hypotheses": [],
+                "attribute_hypotheses": [],
+                "used_term_sources": [],
+                "conflicts": []
+            }
+            write_json(meta_path, empty_meta)
+            bypassed_chunks.append(cid)
+
+    if bypassed_chunks:
+        run_state.record_chunks(str(root), bypassed_chunks, provenance="bypassed_reference")
+
+    return {
+        "status": "completed",
+        "bypassed_chunks": bypassed_chunks,
+        "count": len(bypassed_chunks)
+    }
 
 
 def status(temp_dir):
@@ -382,6 +673,158 @@ def status(temp_dir):
             "outputs": result.get("outputs", {}) if result else {}, "blockers": blockers}
 
 
+def extract_candidate_terms(doc, top_n=30):
+    """Scan doc blocks for high-frequency domain acronyms and hyphenated compound terms."""
+    COMMON_IGNORE = {
+        "THE", "AND", "FOR", "WITH", "THAT", "THIS", "FROM", "THEIR", "WHICH", "WERE",
+        "HAVE", "BEEN", "ALSO", "MORE", "SUCH", "THAN", "EACH", "WHEN", "INTO", "BOTH",
+        "SOME", "THEN", "THESE", "THOSE", "ONLY", "MOST", "OVER", "AFTER", "BEFORE",
+        "PDF", "URL", "HTML", "USA", "UK", "DOI", "HTTP", "HTTPS", "FIG", "REF", "PAGE",
+        "ET", "AL", "VOL", "NO", "YES", "NOT", "CAN", "MAY", "USE", "NEW", "ONE", "TWO",
+        "ALL", "ANY", "BUT", "ARE", "HAS", "HAD", "WAS", "OUT", "OFF", "PER", "VIA", "SEE"
+    }
+
+    full_text = " ".join(b.get("text", "") for b in doc.get("blocks", []) if not b.get("is_reference"))
+    candidates = Counter()
+
+    # 1. Acronyms / Uppercase compounds: e.g. SAR, PK/PD, HTS, ADMET, PROTAC, CNS, RNA, DNA, QSAR
+    acronyms = re.findall(r'\b[A-Z0-9]{2,}(?:/[A-Z0-9]{2,})*\b', full_text)
+    for a in acronyms:
+        if a not in COMMON_IGNORE and len(a) >= 2 and not a.isdigit():
+            candidates[a] += 1
+
+    # 2. Technical hyphenated terms: e.g. hit-to-lead, high-throughput, machine-learning, structure-activity
+    hyphenated = re.findall(r'\b[a-zA-Z]{2,}(?:-[a-zA-Z]{2,})+\b', full_text)
+    for h in hyphenated:
+        lower_h = h.lower()
+        if lower_h not in {"state-of-the-art", "peer-reviewed", "well-known", "in-depth", "real-time"}:
+            candidates[lower_h] += 1
+
+    ranked = candidates.most_common(top_n)
+    return [{"source": term, "frequency": count} for term, count in ranked]
+
+
+def seed_glossary(temp_dir, top_n=30):
+    """Seed glossary.json with candidate domain terms before translation dispatch."""
+    root = Path(temp_dir).resolve()
+    doc_path = root / "doc.json"
+    if not doc_path.exists():
+        raise PipelineError("doc.json not found; run prepare first")
+    doc = read_json(doc_path)
+    
+    glossary_path = root / "glossary.json"
+    if glossary_path.exists():
+        gloss = read_json(glossary_path)
+    else:
+        gloss = {"version": 2, "terms": [], "high_frequency_top_n": 20, "applied_meta_hashes": {}}
+    
+    existing_sources = {t.get("source", "").lower(): t for t in gloss.get("terms", [])}
+    candidates = extract_candidate_terms(doc, top_n=top_n)
+    added = []
+    
+    for item in candidates:
+        src = item["source"]
+        if src.lower() not in existing_sources:
+            new_term = {
+                "id": src,
+                "source": src,
+                "target": "",  # To be curated by Agent or translation
+                "category": "acronym" if src.isupper() else "compound",
+                "aliases": [],
+                "gender": "unknown",
+                "confidence": "medium",
+                "frequency": item["frequency"],
+                "evidence_refs": [],
+                "notes": "auto-seeded from high-frequency scan"
+            }
+            gloss.setdefault("terms", []).append(new_term)
+            added.append(item)
+    
+    write_json(glossary_path, gloss)
+    return {
+        "status": "seeded",
+        "glossary_path": str(glossary_path),
+        "total_terms": len(gloss.get("terms", [])),
+        "newly_added_count": len(added),
+        "newly_added": added
+    }
+
+
+def patch_glossary_terms(temp_dir):
+    """Surgically replace term aliases with canonical targets across all translated chunk files."""
+    root = Path(temp_dir).resolve()
+    glossary_path = root / "glossary.json"
+    if not glossary_path.exists():
+        return {"status": "skipped", "reason": "glossary.json not found", "patches": {}}
+    
+    gloss = read_json(glossary_path)
+    terms = gloss.get("terms", [])
+    
+    replacements = []
+    for term in terms:
+        target = term.get("target", "").strip()
+        aliases = term.get("aliases", [])
+        if not target:
+            continue
+        for alias in aliases:
+            alias = alias.strip()
+            if alias and alias != target:
+                replacements.append((alias, target, term.get("source", "")))
+    
+    if not replacements:
+        return {"status": "unchanged", "message": "No aliases defined in glossary", "patches": {}}
+    
+    # Sort replacements by length descending so longer phrases match first
+    replacements.sort(key=lambda x: len(x[0]), reverse=True)
+    out_files = sorted(list(root.glob("output_chunk*.md")))
+    patches = {}
+    total_replaced = 0
+
+    def _safe_replace(content, alias, target):
+        # Protect comments <!-- ... -->, markdown images ![...](...), HTML tags <...>, code `...`
+        pattern = re.compile(r'(<!--.*?-->|!\[.*?\]\(.*?\)|<[^>]+>|`[^`]+`)', re.DOTALL)
+        parts = pattern.split(content)
+        count = 0
+        for i in range(0, len(parts), 2):
+            occurrences = parts[i].count(alias)
+            if occurrences:
+                parts[i] = parts[i].replace(alias, target)
+                count += occurrences
+        return ''.join(parts), count
+
+    for fpath in out_files:
+        content = fpath.read_text(encoding="utf-8")
+        orig_content = content
+        file_patches = []
+        for alias, target, source in replacements:
+            new_content, count = _safe_replace(content, alias, target)
+            if count > 0:
+                content = new_content
+                file_patches.append({"alias": alias, "target": target, "source": source, "count": count})
+                total_replaced += count
+        if content != orig_content:
+            fpath.write_text(content, encoding="utf-8")
+            patches[fpath.name] = file_patches
+
+    # Update run_state output hashes if run_state.json exists
+    state_path = root / "run_state.json"
+    if state_path.exists() and patches:
+        state = read_json(state_path)
+        chunks = state.get("chunks", {})
+        for fname in patches:
+            chunk_id = fname.replace("output_", "").replace(".md", "")
+            if chunk_id in chunks:
+                chunks[chunk_id]["output_hash"] = digest_file(root / fname)
+        write_json(state_path, state)
+
+    return {
+        "status": "patched" if total_replaced > 0 else "unchanged",
+        "total_replacements": total_replaced,
+        "files_modified": len(patches),
+        "patches": patches
+    }
+
+
 def cleanup(temp_dir):
     """Remove only known regenerable scratch files after accepted QA."""
     root = Path(temp_dir).resolve()
@@ -405,7 +848,10 @@ def cleanup(temp_dir):
 
 
 def _print(value):
-    print(json.dumps(value, ensure_ascii=False, indent=2))
+    try:
+        print(json.dumps(value, ensure_ascii=False, indent=2))
+    except UnicodeEncodeError:
+        print(json.dumps(value, ensure_ascii=True, indent=2))
 
 
 def main(argv=None):
@@ -421,11 +867,16 @@ def main(argv=None):
     prep.add_argument("--instructions-file")
     prep.add_argument("--mineru-dir")
     prep.add_argument("--ocr-pdf")
-    prep.add_argument("--chunk-size", type=int, default=6000)
+    prep.add_argument("--chunk-size", type=int, default=12000)
     ap = sub.add_parser("accept-parse")
     ap.add_argument("temp_dir")
     ap.add_argument("--reviewer", required=True)
     ap.add_argument("--evidence", required=True)
+    sg = sub.add_parser("seed-glossary")
+    sg.add_argument("temp_dir")
+    sg.add_argument("--top-n", type=int, default=30)
+    pt = sub.add_parser("patch-terms")
+    pt.add_argument("temp_dir")
     dsp = sub.add_parser("dispatch")
     dsp.add_argument("temp_dir")
     dsp.add_argument("chunk_ids", nargs="+")
@@ -447,8 +898,21 @@ def main(argv=None):
     pub.add_argument("temp_dir")
     pub.add_argument("--reviewer", required=True)
     pub.add_argument("--evidence", required=True)
+    outl = sub.add_parser("outline")
+    outl.add_argument("temp_dir")
+    byp = sub.add_parser("bypass-refs")
+    byp.add_argument("temp_dir")
+    aud = sub.add_parser("audit-layout")
+    aud.add_argument("temp_dir")
     stat = sub.add_parser("status")
     stat.add_argument("temp_dir")
+    psplit = sub.add_parser("plan-split")
+    psplit.add_argument("temp_dir")
+    psplit.add_argument("--target-chunk-size", type=int, default=12000)
+    spl = sub.add_parser("split")
+    spl.add_argument("temp_dir")
+    spl.add_argument("--cuts", nargs="*", default=None, help="Block IDs at which to cut chunks")
+    spl.add_argument("--chunk-size", type=int, default=12000)
     clean = sub.add_parser("cleanup")
     clean.add_argument("temp_dir")
     args = parser.parse_args(argv)
@@ -463,6 +927,14 @@ def main(argv=None):
                             args.mineru_dir, args.ocr_pdf, args.chunk_size)
         elif args.cmd == "accept-parse":
             value = accept_parse(args.temp_dir, args.reviewer, args.evidence)
+        elif args.cmd == "outline":
+            value = outline(args.temp_dir)
+        elif args.cmd == "seed-glossary":
+            value = seed_glossary(args.temp_dir, top_n=args.top_n)
+        elif args.cmd == "patch-terms":
+            value = patch_glossary_terms(args.temp_dir)
+        elif args.cmd == "bypass-refs":
+            value = bypass_references(args.temp_dir)
         elif args.cmd == "dispatch":
             value = dispatch(args.temp_dir, args.chunk_ids, args.context_chars)
         elif args.cmd == "record":
@@ -483,8 +955,16 @@ def main(argv=None):
                           legacy_aliases=getattr(args, "legacy_aliases", False))
         elif args.cmd == "accept-publish":
             value = accept_publish(args.temp_dir, args.reviewer, args.evidence)
+        elif args.cmd == "audit-layout":
+            res = read_json(Path(args.temp_dir).resolve() / "build_result.json")
+            glossary_path = Path(args.temp_dir).resolve() / "glossary.json"
+            value = audit_layout.audit_publication_dir(Path(res["output_dir"]), glossary_path=glossary_path if glossary_path.is_file() else None)
         elif args.cmd == "status":
             value = status(args.temp_dir)
+        elif args.cmd == "plan-split":
+            value = plan_split(args.temp_dir, target_chars=args.target_chunk_size)
+        elif args.cmd == "split":
+            value = split_run(args.temp_dir, cuts=args.cuts, chunk_size=args.chunk_size)
         elif args.cmd == "cleanup":
             value = cleanup(args.temp_dir)
         _print(value)
