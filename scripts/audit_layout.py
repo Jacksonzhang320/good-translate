@@ -76,12 +76,27 @@ def audit_html_content(content: str, filename: str = "", html_path: Path | None 
         or bool(soup.find("main", attrs={"data-edition": "gov_doc"}))
         or bool(soup.find(class_="gov-header") or soup.find(class_="gov-org-name"))
     )
+    is_bilingual = (
+        "bilingual" in filename.lower()
+        or "双语" in filename
+        or bool(soup.find("main", attrs={"data-edition": "bilingual"}))
+        or bool(soup.find(class_=re.compile(r"\borig\b")))
+    )
 
     issues = []
     
     # Audit Terminology Consistency against Glossary
+    # In bilingual editions, skip alias-leak checks on orig/source paragraphs
     if glossary_path:
-        issues.extend(audit_glossary_consistency(soup, glossary_path))
+        if is_bilingual:
+            # Build a soup stripped of orig paragraphs for alias check
+            import copy
+            soup_translated = copy.copy(soup)
+            for orig_el in soup_translated.find_all(class_=re.compile(r"\borig\b")):
+                orig_el.decompose()
+            issues.extend(audit_glossary_consistency(soup_translated, glossary_path))
+        else:
+            issues.extend(audit_glossary_consistency(soup, glossary_path))
     
     # 1. Audit Header Metadata (gov_doc specific)
     if is_gov_doc:
@@ -314,6 +329,13 @@ def audit_html_content(content: str, filename: str = "", html_path: Path | None 
     body_ps = soup.find_all("p")
     for p in body_ps:
         if p.find_parent(class_=re.compile(r"ref|reference|footnote")):
+            continue
+        # In bilingual editions, paragraphs with class "orig" (or inside an .orig
+        # container) are intentionally English source paragraphs — skip them.
+        if is_bilingual and (
+            "orig" in p.get("class", [])
+            or p.find_parent(class_=re.compile(r"\borig\b|\bsource\b|\bbilingual-source\b"))
+        ):
             continue
         txt = p.get_text(strip=True)
         if len(txt) > 100 and not any(allowed in txt.lower() for allowed in ALLOWED_END_MATTER):
