@@ -512,27 +512,30 @@ def _geometry_blocks(pdf, pages, out_dir, style, issues, scanning):
             spans = [s for l in lines for s in l.get('spans', []) if s.get('text', '').strip()]
             size = max((s['size'] for s in spans), default=style['body']['font_size_pt'])
 
-            # Split leading running header or DOI line if merged into this block
-            if len(lines) > 1:
+            # Split all leading running headers or DOI lines if merged into this block
+            while len(lines) > 1:
                 first_text = ''.join(s.get('text', '') for s in lines[0].get('spans', [])).strip()
                 is_running_hdr = (
                     first_text.lower() in SUSPICIOUS_RUNNING_HEADERS or
                     bool(re.search(r'https?://|doi\.org', first_text, re.I)) or
                     (lines[0]['bbox'][1] < 120 and any(w in first_text.lower().split() for w in ('article', 'review', 'perspective', 'letter', '述评', '综述')))
                 )
-                if is_running_hdr:
-                    h_box = list(lines[0]['bbox'])
-                    h_obj = _append(blocks, 'text', first_text, page_num, h_box)
-                    h_obj['is_running_header'] = True
-                    h_obj['style_id'] = 'running-header'
-                    lines = lines[1:]
-                    text = norm._join_lines([''.join(s.get('text', '') for s in l.get('spans', [])) for l in lines])
-                    if not text.strip():
-                        continue
-                    box = [min(l['bbox'][0] for l in lines), min(l['bbox'][1] for l in lines),
-                           max(l['bbox'][2] for l in lines), max(l['bbox'][3] for l in lines)]
-                    spans = [s for l in lines for s in l.get('spans', []) if s.get('text', '').strip()]
-                    size = max((s['size'] for s in spans), default=style['body']['font_size_pt'])
+                if not is_running_hdr:
+                    break
+                h_box = list(lines[0]['bbox'])
+                h_obj = _append(blocks, 'text', first_text, page_num, h_box)
+                h_obj['is_running_header'] = True
+                h_obj['style_id'] = 'running-header'
+                lines = lines[1:]
+                text = norm._join_lines([''.join(s.get('text', '') for s in l.get('spans', [])) for l in lines])
+                if not text.strip():
+                    break
+                box = [min(l['bbox'][0] for l in lines), min(l['bbox'][1] for l in lines),
+                       max(l['bbox'][2] for l in lines), max(l['bbox'][3] for l in lines)]
+                spans = [s for l in lines for s in l.get('spans', []) if s.get('text', '').strip()]
+                size = max((s['size'] for s in spans), default=style['body']['font_size_pt'])
+            if not text.strip():
+                continue
 
             # Split leading heading line if merged into this block by PyMuPDF
             if len(lines) > 1:
