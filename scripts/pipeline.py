@@ -22,6 +22,7 @@ import glossary
 import manifest
 import meta
 import pdf_document
+import progress_tracker
 import publish
 import run_state
 
@@ -195,7 +196,7 @@ def _blocking_issues(doc):
 
 
 def prepare(pdf_path, temp_dir, target_lang="zh-CN", instructions="", mineru_dir=None,
-            ocr_pdf=None, chunk_size=12000):
+            ocr_pdf=None, chunk_size=12000, gui=False):
     root = Path(temp_dir).resolve()
     root.mkdir(parents=True, exist_ok=True)
     doc = pdf_document.build_document(pdf_path, root, mineru_dir=mineru_dir, ocr_pdf=ocr_pdf)
@@ -234,6 +235,17 @@ def prepare(pdf_path, temp_dir, target_lang="zh-CN", instructions="", mineru_dir
     write_once(root / "config.txt", config)
     state.update({"chunks": len(names), "prompt_version": prompt_version})
     write_json(root / "pipeline_state.json", state)
+
+    try:
+        tracker = progress_tracker.ProgressTracker(root, task_name=Path(pdf_path).name)
+        tracker.update_phase("prepare", detail=f"版面视觉解析完成，提取 {len(doc['blocks'])} 个内容块")
+        chunk_items = [{"id": f"chunk{i+1:04d}", "order": i+1, "status": "pending"} for i in range(len(names))]
+        tracker.update_chunks(chunk_items)
+        if gui:
+            tracker.launch_gui()
+    except Exception:
+        pass
+
     return state
 
 
@@ -305,7 +317,23 @@ def record(temp_dir, chunk_ids):
     root = Path(temp_dir).resolve()
     for chunk_id in chunk_ids:
         meta.load_meta(root / f"output_{chunk_id}.meta.json")
-    return {"recorded_chunk_ids": run_state.record_chunks(str(root), chunk_ids)}
+    rec_ids = run_state.record_chunks(str(root), chunk_ids)
+    try:
+        tracker = progress_tracker.ProgressTracker(root)
+        m = manifest.load_manifest(str(root))
+        if m:
+            r_state = run_state.load_run_state(str(root))
+            chunks_map = r_state.get("chunks", {})
+            chunks_info = []
+            for item in sorted(m.get("chunks", []), key=lambda c: c.get("order", 0)):
+                cid = item["id"]
+                st = "done" if cid in chunks_map else "pending"
+                chunks_info.append({"id": cid, "order": item.get("order", 1), "status": st})
+            tracker.update_phase("translate")
+            tracker.update_chunks(chunks_info)
+    except Exception:
+        pass
+    return {"recorded_chunk_ids": rec_ids}
 
 
 def _meta_state(root):
@@ -339,9 +367,22 @@ def freeze(temp_dir):
 
 
 def build(temp_dir, **kwargs):
+    try:
+        tracker = progress_tracker.ProgressTracker(temp_dir)
+        tracker.update_phase("build", detail="GB/T 9704 公文版排版与 PDF 渲染中...")
+    except Exception:
+        tracker = None
     result = publish.build(temp_dir, **kwargs)
     if result["status"] == "failed":
+        if tracker:
+            tracker.fail("; ".join(result.get("errors", [])))
         raise PipelineError("Publication failed: " + "; ".join(result.get("errors", [])))
+    if tracker and result.get("outputs"):
+        for ed_name, ed_outs in result["outputs"].items():
+            for fmt, item in ed_outs.items():
+                if item.get("path"):
+                    tracker.set_output(f"{ed_name}_{fmt}", item["path"])
+        tracker.update_phase("audit_layout", detail="排版渲染完成，准备终审门禁...")
     return result
 
 
@@ -375,6 +416,18 @@ def accept_publish(temp_dir, reviewer, evidence):
     result["status"] = "accepted"
     write_json(root / "build_result.json", result)
     write_json(Path(result["output_dir"]) / "build_result.json", result)
+
+    try:
+        tracker = progress_tracker.ProgressTracker(root)
+        out_dict = {}
+        for ed_name, ed_outs in result.get("outputs", {}).items():
+            for fmt, item in ed_outs.items():
+                if item.get("path"):
+                    out_dict[f"{ed_name}_{fmt}"] = item["path"]
+        tracker.complete(detail="终审质检门禁全部通过，三版本文献已归档！", outputs=out_dict)
+    except Exception:
+        pass
+
     return result
 
 
@@ -551,6 +604,14 @@ def split_run(temp_dir, cuts=None, chunk_size=12000):
         state["chunks"] = len(names)
         write_json(state_path, state)
 
+    try:
+        tracker = progress_tracker.ProgressTracker(root)
+        chunk_items = [{"id": f"chunk{i+1:04d}", "order": i+1, "status": "pending"} for i in range(len(names))]
+        tracker.update_phase("split", detail=f"语义大纲分块完成，共划分 {len(names)} 个分块")
+        tracker.update_chunks(chunk_items)
+    except Exception:
+        pass
+
     return {
         "status": "success",
         "chunk_count": len(names),
@@ -623,6 +684,20 @@ def bypass_references(temp_dir):
 
     if bypassed_chunks:
         run_state.record_chunks(str(root), bypassed_chunks, provenance="bypassed_reference")
+        try:
+            tracker = progress_tracker.ProgressTracker(root)
+            m = manifest.load_manifest(str(root))
+            if m:
+                r_state = run_state.load_run_state(str(root))
+                chunks_info = []
+                for item in sorted(m.get("chunks", []), key=lambda c: c.get("order", 0)):
+                    cid = item["id"]
+                    st = "bypassed" if cid in bypassed_chunks else ("done" if cid in r_state.get("chunks", {}) else "pending")
+                    chunks_info.append({"id": cid, "order": item.get("order", 1), "status": st})
+                tracker.update_chunks(chunks_info)
+                tracker.update_phase("translate", detail=f"已免译旁路 {len(bypassed_chunks)} 个纯引用分块")
+        except Exception:
+            pass
 
     return {
         "status": "completed",
@@ -828,6 +903,12 @@ def patch_glossary_terms(temp_dir):
                 chunks[chunk_id]["output_hash"] = digest_file(root / fname)
         write_json(state_path, state)
 
+    try:
+        tracker = progress_tracker.ProgressTracker(root)
+        tracker.update_phase("patch_terms", detail=f"术语闭环对齐完成，共应用 {total_replaced} 处精准替换")
+    except Exception:
+        pass
+
     return {
         "status": "patched" if total_replaced > 0 else "unchanged",
         "total_replacements": total_replaced,
@@ -859,6 +940,11 @@ def cleanup(temp_dir):
 
 
 def _print(value):
+    if hasattr(sys.stdout, "reconfigure"):
+        try:
+            sys.stdout.reconfigure(encoding="utf-8")
+        except Exception:
+            pass
     try:
         print(json.dumps(value, ensure_ascii=False, indent=2))
     except UnicodeEncodeError:
@@ -879,6 +965,7 @@ def main(argv=None):
     prep.add_argument("--mineru-dir")
     prep.add_argument("--ocr-pdf")
     prep.add_argument("--chunk-size", type=int, default=12000)
+    prep.add_argument("--gui", action="store_true", help="Launch detached desktop progress HUD")
     ap = sub.add_parser("accept-parse")
     ap.add_argument("temp_dir")
     ap.add_argument("--reviewer", required=True)
@@ -924,6 +1011,13 @@ def main(argv=None):
     spl.add_argument("temp_dir")
     spl.add_argument("--cuts", nargs="*", default=None, help="Block IDs at which to cut chunks")
     spl.add_argument("--chunk-size", type=int, default=12000)
+    prog = sub.add_parser("progress")
+    prog.add_argument("temp_dir")
+    prog.add_argument("--phase", choices=progress_tracker.PHASE_KEYS + ["completed"])
+    prog.add_argument("--percent", type=int)
+    prog.add_argument("--detail")
+    prog.add_argument("--gui", action="store_true", help="Launch detached desktop progress HUD")
+    prog.add_argument("--complete", action="store_true", help="Mark run completed")
     clean = sub.add_parser("cleanup")
     clean.add_argument("temp_dir")
     args = parser.parse_args(argv)
@@ -935,7 +1029,8 @@ def main(argv=None):
             if args.instructions_file:
                 instructions = Path(args.instructions_file).read_text(encoding="utf-8")
             value = prepare(args.pdf, args.temp_dir, args.lang, instructions,
-                            args.mineru_dir, args.ocr_pdf, args.chunk_size)
+                            args.mineru_dir, args.ocr_pdf, args.chunk_size,
+                            gui=getattr(args, "gui", False))
         elif args.cmd == "accept-parse":
             value = accept_parse(args.temp_dir, args.reviewer, args.evidence)
         elif args.cmd == "outline":
@@ -976,6 +1071,21 @@ def main(argv=None):
             value = plan_split(args.temp_dir, target_chars=args.target_chunk_size)
         elif args.cmd == "split":
             value = split_run(args.temp_dir, cuts=args.cuts, chunk_size=args.chunk_size)
+        elif args.cmd == "progress":
+            tracker = progress_tracker.ProgressTracker(args.temp_dir)
+            if getattr(args, "gui", False):
+                tracker.launch_gui()
+            if args.phase:
+                tracker.update_phase(args.phase, detail=args.detail, custom_percent=args.percent)
+            elif args.detail or args.percent is not None:
+                if args.detail:
+                    tracker.state["detail"] = args.detail
+                if args.percent is not None:
+                    tracker.state["overall_percent"] = max(0, min(100, args.percent))
+                tracker._save()
+            if args.complete:
+                tracker.complete(detail=args.detail or "任务已全部完成！")
+            value = tracker.state
         elif args.cmd == "cleanup":
             value = cleanup(args.temp_dir)
         _print(value)

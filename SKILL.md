@@ -83,6 +83,9 @@ run state. Paragraphs split across page breaks, column boundaries, or figure
 interruptions are automatically rejoined before translation to preserve full
 sentence semantics. Dual-column pages are automatically sorted in natural reading
 order with overlapping figure elements merged into unified crops.
+Pass `--gui` to launch the native desktop floating HUD progress monitor (`progress_gui.py`),
+which displays live phase stepping, subagent parallel throughput, elapsed time, and
+one-click post-completion actions.
 
 Generate source-page and object contact sheets with `qa_preview.py`. Inspect all
 figure, formula, and table crops and representative source pages.
