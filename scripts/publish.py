@@ -58,7 +58,7 @@ def _clean_heading_text(text):
 
 def _format_gov_caption(text):
     text = text.strip()
-    m = re.match(r"^((?:图|附图|扩展数据图|Fig\.?|Figure)\s*[\d\w.-]+(?:\s*[|｜:：\s]\s*[^。\n\r]+)?[。]?)(\s*.*)$", text, re.DOTALL)
+    m = re.match(r"^((?:图|附图|扩展数据图|Fig\.?|Figure|表|附表|Table)\s*[\d\w.-]+(?:\s*[|｜:：\s]\s*[^。\n\r]+)?[。]?)(\s*.*)$", text, re.DOTALL | re.I)
     if m:
         title_part = m.group(1).strip()
         desc_part = m.group(2).strip()
@@ -83,6 +83,10 @@ def _semantic_stem(doc, translations, edition, file_stem=None, title=None):
             source_p = doc.get("source", {}).get("path") or doc.get("source", {}).get("filename") or ""
             if source_p:
                 base = Path(source_p).stem
+        # Clean running headers, URLs, and DOIs from title stem
+        base = re.sub(r'^(?:article|review|perspective|letter|research\s+article|综述|述评|快讯|文章)\s*', '', base, flags=re.I)
+        base = re.sub(r'https?://\S+', '', base)
+        base = re.sub(r'doi[:\s/]+10\.\S+', '', base, flags=re.I)
         base = re.sub(r'[\\/*?:"<>|\r\n]', "", str(base)).strip()
     base = base[:50].strip() if base else "book"
     suffix = "公文版" if edition == "gov_doc" else ("期刊原版" if edition == "mono" else "双语对照")
@@ -408,7 +412,11 @@ h1.heading, h1.gov-title, h1, .main-title {{ font-family: "FZXiaoBiaoSong-B05S",
 h2, h2.gov-h1 {{ font-family: "SimHei", "黑体", "Source Han Sans SC", sans-serif; font-size: 16pt; font-weight: normal; margin: 1.2em 0 0.5em; text-indent: 2em; line-height: 28.5pt; }}
 h3, h3.gov-h2 {{ font-family: "KaiTi_GB2312", "KaiTi", "楷体", "STKaiti", serif; font-size: 16pt; font-weight: normal; margin: 1em 0 0.4em; text-indent: 2em; line-height: 28.5pt; }}
 h4, h4.gov-h3 {{ font-family: "FangSong_GB2312", "FangSong", "仿宋", "STFangsong", serif; font-size: 16pt; font-weight: bold; margin: 0.8em 0 0.3em; text-indent: 2em; line-height: 28.5pt; }}
-h5,h6 {{ font-family: "FangSong_GB2312", "FangSong", "仿宋", "STFangsong", serif; font-size: 16pt; font-weight: normal; margin: 0.5em 0 0.2em; text-indent: 2em; line-height: 28.5pt; }}
+h5, h5.gov-h4, h6 {{ font-family: "FangSong_GB2312", "FangSong", "仿宋", "STFangsong", serif; font-size: 16pt; font-weight: normal; margin: 0.5em 0 0.2em; text-indent: 2em; line-height: 28.5pt; }}
+.gov-abstract-title {{ font-family: "KaiTi_GB2312", "KaiTi", "楷体", serif; font-size: 16pt; font-weight: bold; text-align: left; text-indent: 2em; margin: 1.2em 0 0.4em; line-height: 28.5pt; }}
+.gov-abstract-desc, .gov-abstract-desc p {{ font-family: "KaiTi_GB2312", "KaiTi", "楷体", serif !important; font-size: 16pt !important; line-height: 28.5pt !important; }}
+.gov-callout {{ background: #fdfdfd; border: 1pt solid #ccc; border-radius: 4px; padding: 10pt 14pt; margin: 1.2em 0; break-inside: avoid; text-indent: 0; }}
+.gov-callout-title {{ font-family: "SimHei", "黑体", sans-serif; font-size: 14pt; font-weight: bold; margin: 0.2em 0 0.4em; color: #222222; text-indent: 0; }}
 .gov-header {{ text-align: center; margin-bottom: 26pt; }}
 .gov-org-name {{ font-family: "FZXiaoBiaoSong-B05S", "方正小标宋简体", "小标宋", "SimSun", serif; font-size: 28pt; color: #e60012; letter-spacing: 2pt; font-weight: bold; margin-bottom: 12pt; }}
 .gov-doc-number {{ font-family: "FangSong_GB2312", "FangSong", "仿宋", serif; font-size: 16pt; color: #000000; margin-bottom: 8pt; }}
@@ -420,14 +428,14 @@ h5,h6 {{ font-family: "FangSong_GB2312", "FangSong", "仿宋", "STFangsong", ser
 .formula p {{ text-indent: 0; margin: 0; }}
 .caption {{ margin: 0.4em 0 1.2em; text-indent: 0; }}
 .caption p {{ text-indent: 0; margin: 0; }}
-.gov-caption-title {{ font-family: "SimHei", "黑体", "Source Han Sans SC", sans-serif; font-size: 11pt; font-weight: bold; text-align: center; margin: 0.4em 0 0.3em; text-indent: 0; line-height: 1.4; color: #000000; }}
+.gov-caption-title {{ font-family: "SimHei", "黑体", "Source Han Sans SC", sans-serif; font-size: 11pt; font-weight: bold; text-align: center; margin: 0.4em 0 0.3em; text-indent: 0; line-height: 1.4; color: #000000; break-after: avoid; }}
 .gov-caption-desc {{ font-family: "FangSong_GB2312", "FangSong", "仿宋", serif; font-size: 10pt; line-height: 1.45; text-align: justify; color: #222222; text-indent: 2em; margin: 0; }}
 .gov-caption-desc p {{ text-indent: 2em; margin: 0 0 0.3em; text-align: justify; }}
 .gov-ref-title {{ font-family: "SimHei", "黑体", "Source Han Sans SC", sans-serif; font-size: 14pt; font-weight: bold; text-align: center; margin: 2.2em 0 1.2em; text-indent: 0 !important; break-after: avoid; }}
 .gov-appendix-title {{ font-family: "SimHei", "黑体", "Source Han Sans SC", sans-serif; font-size: 16pt; font-weight: bold; text-align: center; margin: 2.4em 0 1.2em; text-indent: 0 !important; break-after: avoid; }}
-.gov-ref-item {{ font-family: "Times New Roman", "FangSong_GB2312", "FangSong", "仿宋", serif !important; font-size: 10pt !important; line-height: 1.4 !important; margin: 0 0 0.4em 0 !important; padding-left: 2em !important; text-indent: -2em !important; text-align: justify !important; word-break: break-word; }}
+.gov-ref-item {{ font-family: "Times New Roman", "FangSong_GB2312", "FangSong", "仿宋", serif !important; font-size: 10pt !important; line-height: 1.4 !important; margin: 0 0 0.4em 0 !important; padding-left: 2.8em !important; text-indent: -2.8em !important; text-align: justify !important; word-break: break-word; }}
 .gov-ref-item p, .gov-ref-item .gov-ref-entry {{ font-family: inherit !important; font-size: 10pt !important; line-height: 1.4 !important; margin: 0 !important; padding: 0 !important; text-indent: 0 !important; display: inline !important; text-align: justify !important; }}
-.gov-ref-num {{ font-family: "Times New Roman", serif !important; }}
+.gov-ref-num {{ font-family: "Times New Roman", serif !important; font-weight: normal; }}
 .footnote {{ font-size: 14pt; font-family: "FangSong_GB2312", "FangSong", serif; }}
 .footnote p {{ text-indent: 0; }}
 .table {{ break-inside: avoid; margin: 0.8em 0 0.3em; text-align: center; text-indent: 0; }}
@@ -435,9 +443,12 @@ h5,h6 {{ font-family: "FangSong_GB2312", "FangSong", "仿宋", "STFangsong", ser
 .table img {{ display: block; margin: 0 auto; max-width: 100%; max-height: {max_img_h}pt; height: auto; object-fit: contain; }}
 p:has(img) {{ text-indent: 0; }}
 img {{ max-width: 100%; max-height: {max_img_h}pt; height: auto; object-fit: contain; }}
-table {{ border-collapse: collapse; width: 100%; margin: 1em auto; font-family: "FangSong_GB2312", "FangSong", serif; font-size: 14pt; border-top: 1.5pt solid #000; border-bottom: 1.5pt solid #000; text-indent: 0; }}
-th {{ font-family: "SimHei", "黑体", sans-serif; font-weight: normal; border-bottom: 1pt solid #000; padding: 0.4em; text-align: center; }}
-td {{ border-bottom: 0.5pt solid #ccc; padding: 0.4em; }}
+table {{ border-collapse: collapse; width: 100%; margin: 0.8em auto; font-family: "FangSong_GB2312", "FangSong", serif; font-size: 10.5pt; line-height: 1.35; border-top: 1.5pt solid #000; border-bottom: 1.5pt solid #000; text-indent: 0; }}
+table.dense-table, table.dense-table th, table.dense-table td {{ font-size: 9.5pt !important; line-height: 1.25 !important; padding: 3pt 3pt !important; }}
+thead {{ display: table-header-group; }}
+tr {{ break-inside: avoid; }}
+th {{ font-family: "SimHei", "黑体", sans-serif; font-weight: bold; border-bottom: 1pt solid #000; padding: 4pt 3pt; text-align: center; vertical-align: middle; }}
+td {{ padding: 4pt 3pt; text-align: left; vertical-align: top; border-bottom: none; }}
 .source-anchor {{ display: none; }}
 mjx-container {{ max-width: 100%; }}
 mjx-container > svg {{ max-width: 100%; height: auto; }}
@@ -542,11 +553,52 @@ def make_html(doc, style, translations, edition, title, author, lang, cover=None
         body.append(f'<div class="gov-header"><div class="gov-org-name">{html.escape(org_name)}</div><div class="gov-doc-number">{html.escape(doc_number)}</div><div class="gov-red-line"></div></div>')
     sec_count = 0
     subsec_count = 0
+    sub3_count = 0
     in_refs = False
     ref_sec_count = 0
     saw_methods = False
     ref_items = []
-    for block in doc["blocks"]:
+
+    ordered_blocks = list(doc["blocks"])
+    if is_gov:
+        table_ids = {b["id"] for b in ordered_blocks if b.get("kind") == "table"}
+        caption_for_table = {}
+        for b in ordered_blocks:
+            if b.get("kind") == "caption" and b.get("caption_of") in table_ids:
+                caption_for_table[b.get("caption_of")] = b
+        if caption_for_table:
+            reordered = []
+            handled_captions = set()
+            for b in ordered_blocks:
+                if b["id"] in handled_captions:
+                    continue
+                if b.get("kind") == "table" and b["id"] in caption_for_table:
+                    cap_block = caption_for_table[b["id"]]
+                    reordered.append(cap_block)
+                    handled_captions.add(cap_block["id"])
+                    reordered.append(b)
+                else:
+                    reordered.append(b)
+            ordered_blocks = reordered
+
+        # Calculate min_gov_level for relative heading scaling
+        non_title_levels = []
+        for b in ordered_blocks:
+            if b.get("kind") == "heading":
+                lvl = int(_number(b.get("level"), 2, 1, 6))
+                txt = _clean_heading_text(translations.get(b["id"], b.get("text", ""))).lower()
+                orig = _clean_heading_text(b.get("text", "")).lower()
+                if lvl > 1 and not (txt in REF_KEYWORDS or orig in REF_KEYWORDS or "reference" in orig or "参考文献" in txt or
+                                    txt in METHODS_KEYWORDS or orig in METHODS_KEYWORDS or
+                                    txt in APPENDIX_KEYWORDS or orig in APPENDIX_KEYWORDS or
+                                    txt in RUNNING_HEADERS or orig in RUNNING_HEADERS or
+                                    txt in {"摘要", "内容摘要", "abstract"} or orig == "abstract" or
+                                    re.match(r"^(?:box|方框|专栏|框)\s*\d+", txt) or re.match(r"^box\s*\d+", orig)):
+                    non_title_levels.append(lvl)
+        distinct_levels = sorted(set(non_title_levels))
+        min_gov_level = distinct_levels[0] if distinct_levels else 2
+
+    for block in ordered_blocks:
         key, kind = block["id"], block["kind"]
         refs = block.get("source_refs", [])
         pages = sorted({ref["page"] for ref in refs if ref.get("page") is not None})
@@ -579,6 +631,11 @@ def make_html(doc, style, translations, edition, title, author, lang, cover=None
         if block.get("caption_of"):
             attrs += f' data-caption-of="{html.escape(block["caption_of"], quote=True)}"'
         original, translated = block["text"], translations[key]
+
+        # Suppress draft publication placeholders
+        if re.search(r"(?:在线发表日期|published online)\s*:\s*xx\s+xx\s+xxxx", translated, re.I) or re.search(r"(?:在线发表日期|published online)\s*:\s*xx\s+xx\s+xxxx", original, re.I):
+            continue
+
         if kind == "heading":
             cleaned_trans = _clean_heading_text(translated)
             cleaned_orig = _clean_heading_text(original)
@@ -631,28 +688,58 @@ def make_html(doc, style, translations, edition, title, author, lang, cover=None
 
                 if is_gov:
                     if level == 1:
+                        cleaned_trans = re.sub(r'^(?:article|review|perspective|letter|research\s+article|综述|述评|快讯|文章)\s*', '', cleaned_trans, flags=re.I)
+                        cleaned_trans = re.sub(r'https?://\S+', '', cleaned_trans)
+                        cleaned_trans = re.sub(r'doi[:\s/]+10\.\S+', '', cleaned_trans, flags=re.I).strip()
                         value = f'<h1 class="gov-title">{html.escape(cleaned_trans)}</h1>'
                     elif is_methods_heading:
                         subsec_count = 0
+                        sub3_count = 0
                         value = '<h2 class="gov-appendix-title">附录：研究方法</h2>'
                     elif is_appendix_heading:
                         subsec_count = 0
+                        sub3_count = 0
                         value = f'<h2 class="gov-appendix-title">附录：{html.escape(cleaned_trans)}</h2>'
+                    elif trans_l in {"摘要", "内容摘要", "abstract"} or orig_l in {"abstract"}:
+                        value = '<div class="gov-abstract-title">【内容摘要】</div>'
+                    elif re.match(r"^(?:box|方框|专栏|框)\s*\d+", trans_l) or re.match(r"^box\s*\d+", orig_l):
+                        box_txt = cleaned_trans
+                        if not re.search(r"^(?:方框|专栏|box)", box_txt, re.I):
+                            box_txt = f"专栏 | {box_txt}"
+                        value = f'<div class="gov-callout-title">【专栏】{html.escape(box_txt)}</div>'
                     else:
-                        is_major = (level == 2) or (trans_l in MAJOR_KEYWORDS) or (orig_l in MAJOR_KEYWORDS) or (trans_l == "致谢" or orig_l.startswith("acknowledg"))
-                        if is_major:
+                        is_major = (level == min_gov_level) or (trans_l in MAJOR_KEYWORDS) or (orig_l in MAJOR_KEYWORDS) or (trans_l == "致谢" or orig_l.startswith("acknowledg"))
+                        rel_level = 1 if is_major else (2 if level == min_gov_level + 1 else (3 if level == min_gov_level + 2 else (4 if level >= min_gov_level + 3 else 2)))
+                        if is_major or rel_level == 1:
                             sec_count += 1
                             subsec_count = 0
+                            sub3_count = 0
                             formatted = f"{_to_cn_num(sec_count)}、{cleaned_trans}"
                             value = f'<h2 class="gov-h1">{html.escape(formatted)}</h2>'
-                        else:
+                        elif rel_level == 2:
                             subsec_count += 1
+                            sub3_count = 0
                             formatted = f"（{_to_cn_num(subsec_count)}）{cleaned_trans}"
                             value = f'<h3 class="gov-h2">{html.escape(formatted)}</h3>'
+                        elif rel_level == 3:
+                            sub3_count += 1
+                            formatted = f"{sub3_count}. {cleaned_trans}"
+                            value = f'<h4 class="gov-h3">{html.escape(formatted)}</h4>'
+                        else:
+                            formatted = f"（{sub3_count or 1}）{cleaned_trans}"
+                            value = f'<h5 class="gov-h4">{html.escape(formatted)}</h5>'
                 else:
                     value = _block_html(block, translated)
         elif is_gov and kind == "caption":
             value = _format_gov_caption(translated)
+        elif kind == "table":
+            val = _block_html(block, translated)
+            m_row = re.search(r"<tr\b[^>]*>(.*?)</tr>", val, re.DOTALL | re.I)
+            if m_row:
+                col_count = len(re.findall(r"<(?:td|th)\b", m_row.group(1), re.I))
+                if col_count >= 4 and "dense-table" not in val:
+                    val = re.sub(r"<table\b", '<table class="dense-table"', val, count=1)
+            value = val
         elif formula_images and (kind == "formula" or MATH_RE.search(original)):
             fallback = block.get("fallback_image") or block.get("image_path")
             if not fallback:
@@ -674,7 +761,7 @@ def make_html(doc, style, translations, edition, title, author, lang, cover=None
             if is_gov:
                 classes = f"block {kind} gov-ref-item"
                 if ref_num:
-                    value = f'<p class="gov-ref-entry"><span class="gov-ref-num">{ref_num}. </span>{body_html}</p>'
+                    value = f'<p class="gov-ref-entry"><span class="gov-ref-num">[{ref_num}] </span>{body_html}</p>'
                 else:
                     value = f'<p class="gov-ref-entry">{body_html}</p>'
             elif edition == "bilingual":

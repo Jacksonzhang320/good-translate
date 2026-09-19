@@ -152,9 +152,9 @@ class GovDocEditionTests(unittest.TestCase):
         self.assertNotIn("三、References", html)
         self.assertNotIn("二、References", html)
         self.assertIn('class="block text gov-ref-item"', html)
-        self.assertIn('<span class="gov-ref-num">1. </span>', html)
-        self.assertIn('<span class="gov-ref-num">2. </span>', html)
-        self.assertIn('<span class="gov-ref-num">3. </span>', html)
+        self.assertIn('<span class="gov-ref-num">[1] </span>', html)
+        self.assertIn('<span class="gov-ref-num">[2] </span>', html)
+        self.assertIn('<span class="gov-ref-num">[3] </span>', html)
         self.assertIn('<h2 class="gov-appendix-title">附录：研究方法</h2>', html)
 
     def test_legacy_aliases_flag_controls_duplicate_saving(self):

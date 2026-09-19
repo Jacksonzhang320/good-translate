@@ -61,8 +61,8 @@ uv run --project "{baseDir}" python "{baseDir}/scripts/pipeline.py" inspect "<pd
 
 Honor `recommended_route`:
 
-- `geometry`: native digital vector PDFs (single- or dual-column). Prepared directly in ~1 second with column-aware geometry flow (zero CUDA/GPU or neural net dependencies).
-- `mineru`: complex layout with dense formula evidence; parse with MinerU, then prepare with `--mineru-dir`.
+- `geometry`: clean single-column digital vector PDFs. Prepared directly in ~1 second with column-aware geometry flow (zero CUDA/GPU or neural net dependencies).
+- `mineru`: complex dual-column layout, dense scientific figures/tables, or formula evidence; parse with MinerU, then prepare with `--mineru-dir`. MinerU provides visual neural layout detection, preventing running header / DOI / title concatenation and TOC box pollution.
 - `ocr+mineru`: scan-like PDFs (no readable text layer); OCR first, run MinerU on the OCR PDF, then prepare using both `--ocr-pdf` and `--mineru-dir`. Crops still come from the untouched source.
 
 OCR and MinerU exceed one minute when needed. Run them through the available
@@ -152,6 +152,7 @@ When translating academic papers with Western references (author names, journal 
 uv run --project "{baseDir}" python "{baseDir}/scripts/pipeline.py" bypass-refs "<run>"
 ```
 This automatically identifies pure citation chunks, writes verbatim output files, and marks them verified. This saves thousands of LLM tokens, prevents citation hallucination, and guarantees 100% citation accuracy without LLM intervention.
+*Strict Boundary Gate*: Only pure reference bibliography entries are bypassed. End-matter prose (Acknowledgements, Competing Interests, Supplementary Information, Author Contributions, and Institutional Affiliations) are strictly guarded and dispatched for LLM translation.
 
 #### 3.2 Phase 1: Flat 1:1 Parallel Dispatch (扁平化全并发调度)
 Use `pipeline.py status` and `run_state.py plan`; dispatch remaining prose chunks.
@@ -197,10 +198,11 @@ Default builds automatically generate all three editions with standardized seman
   - Red header: Issuing authority in 2号/28pt 小标宋 (`#e60012`), issue number in 3号仿宋 (auto-inferred from DOI/metadata or configured via `gov_header` in `style.json`), and 156mm red divider.
   - Standard heading normalization: Title in 2号小标宋 (22pt), 一级标题 in 3号黑体 (`一、`), 二级标题 in 3号楷体 (`（一）`), 三级标题 in 3号仿宋加粗 (`1.`), 四级标题 in 3号仿宋 (`（1）`).
   - Figure and caption standardization: Figure title in 11pt/小4号黑体 centered (without trailing period/pipe), figure explanation in 10pt/5号仿宋 justified with 2em indent, no caption page breaks.
-  - References (参考文献) standardization (**GB/T 7714**): Centered unnumbered bold title (`.gov-ref-title`), 5号字 (10pt Times New Roman + 仿宋), 1.4 compact line height, standard Hanging Indent (`padding-left: 2em; text-indent: -2em;`) with `<span class="gov-ref-num">`, eliminating excessive page bloat.
+  - References (参考文献) standardization (**GB/T 7714**): Centered unnumbered bold title (`.gov-ref-title`), 5号字 (10pt Times New Roman + 仿宋), 1.4 compact line height, standard Hanging Indent (`padding-left: 2.8em; text-indent: -2.8em;`) with square bracket numbering (`<span class="gov-ref-num">[1] </span>`), eliminating margin overflow for numbers up to `[999]`.
   - Appendices (附录/附件) standardization (**GB/T 9704 / GB/T 7713**): Methods and reporting materials cleanly delineated as centered `附录：研究方法` (`.gov-appendix-title`), resetting internal sub-item numbering.
-  - Page footer: 4号半角宋体 with em-dash (`— 1 —`), centered at bottom.
-  - Standard 3-line tables (三线表) and centered, unindented figures/formulas.
+  - Page footer: 4号半角宋体 with em-dash (`— 2 —`), centered at bottom. First page suppresses footer per GB/T 9704.
+  - Tables (**GB/T 7713 / GB/T 9704**): Standard 3-line tables (三线表: 1.5pt top/bottom border, 1.0pt header bottom border, no internal cell borders). Table captions automatically hoisted above tables (`caption-side: top`). Wide tables (>= 4 columns) automatically adopt dense 9.5pt font size (`.dense-table`), eliminating single-character vertical stacking.
+  - Content Abstract & Callout Boxes: Abstract formatted as bold indented `【内容摘要】` (16pt 楷体); Callout boxes (`Box 1/2/3`) rendered as independent containers (`.gov-callout`), preventing disruption of the formal document section numbering.
 
 Options:
 - `--file-stem <stem>`: Custom base filename stem (defaults to cleaned title/first H1 heading).
@@ -230,7 +232,13 @@ The Agent **MUST** actively inspect the publication before calling `accept-publi
    ```text
    uv run --project "{baseDir}" python "{baseDir}/scripts/pipeline.py" audit-layout "<run>"
    ```
-   This automatically catches spurious running headers, broken reference sequences, reference downgrade into `<ol>`, missing gov_doc metadata, and Phase 3 term alias leakage (`term_drift_alias_leak`). If any term alias leakage is reported, run `pipeline.py patch-terms <run>` to eliminate it immediately before acceptance. Fix any `[ERROR]` before proceeding.
+   This automatically catches:
+   - Spurious running headers and leaked URLs/DOIs in headings (`heading_contains_url_or_doi`);
+   - Isolated H2 headings before H1, or excessive subheading collapsing (`excessive_subheadings_under_section`);
+   - Broken reference numbering sequences, reference downgrade into `<ol>`, and non-compliant dot numbering (`ref_format_not_gbt7714`);
+   - Table captions positioned below tables (`table_caption_below_table`) and wide tables lacking dense styling;
+   - Leaked draft placeholders (`draft_placeholder_leaked`) and untranslated English body prose (`untranslated_body_text`);
+   - Missing gov_doc metadata and Phase 3 term alias leakage (`term_drift_alias_leak`). If any term alias leakage is reported, run `pipeline.py patch-terms <run>` to eliminate it immediately before acceptance. Fix any `[ERROR]` before proceeding.
 
 2. **Reference Integrity & GB/T 7714 Styling Review**:
    - **No Premature Break**: Confirm the reference list is not cut short or broken into by OCR page-top headers (e.g. *Perspective*, *Review*, *述评*, *综述*).

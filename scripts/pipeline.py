@@ -118,15 +118,15 @@ def inspect_pdf(pdf_path):
     scan_like = len(low_text) / len(pages) >= .35 or total_chars < max(80, len(pages) * 12)
     two_column = [p["page"] for p in pages if p["columns"] > 1]
     formula_pages = [p["page"] for p in pages if p["math_font_chars"] >= 4 or p["equation_symbols"] >= 3]
-    route = "ocr+mineru" if scan_like else "mineru" if formula_pages else "geometry"
+    route = "ocr+mineru" if scan_like else "mineru" if (two_column or formula_pages) else "geometry"
     return {"schema_version": 1, "source": str(source), "sha256": digest_file(source),
             "page_count": len(pages), "text_characters": total_chars,
             "scan_like": scan_like, "low_text_pages": [p["page"] for p in low_text],
             "two_column_pages": two_column, "formula_pages": formula_pages,
             "recommended_route": route,
             "reason": ({"ocr+mineru": "insufficient text layer",
-                        "mineru": "complex formula evidence",
-                        "geometry": "native digital vector text with column-aware geometry flow"})[route],
+                        "mineru": "complex reading order, dual columns, or formula evidence",
+                        "geometry": "clean single-column digital vector text geometry"})[route],
             "pages": pages}
 
 
@@ -597,7 +597,18 @@ def bypass_references(temp_dir):
 
         src_text = source_path.read_text(encoding="utf-8")
         chunk_bids = set(re.findall(r"^<!--\s*tb:(b\d+)\s*-->", src_text, re.M))
-        if chunk_bids and chunk_bids.issubset(ref_block_ids):
+        
+        # Safety gate: A chunk CANNOT be bypassed if it contains non-reference prose,
+        # author affiliations, acknowledgments, competing interests, or supplementary info.
+        src_lower = src_text.lower()
+        has_end_matter = any(term in src_lower for term in (
+            "acknowledg", "致谢", "利益冲突", "competing interest", "conflict of interest",
+            "author contribution", "作者贡献", "author information", "作者信息",
+            "affiliations", "supplementary information", "补充信息",
+            "department of", "university", "institute of", "hospital"
+        ))
+        
+        if chunk_bids and chunk_bids.issubset(ref_block_ids) and not has_end_matter:
             output_path.write_text(src_text, encoding="utf-8")
             empty_meta = {
                 "schema_version": 1,

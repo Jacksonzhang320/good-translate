@@ -42,7 +42,7 @@ class PipelinePublishTests(unittest.TestCase):
             source = root / "columns.pdf"
             self.make_pdf(source, two_columns=True)
             report = pipeline.inspect_pdf(source)
-            self.assertEqual(report["recommended_route"], "geometry")
+            self.assertEqual(report["recommended_route"], "mineru")
             prepared = pipeline.prepare(source, root / "run")
             self.assertEqual(prepared["status"], "parse_review_pending")
             self.assertEqual(prepared["blocking_issues"], [])

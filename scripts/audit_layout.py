@@ -140,14 +140,48 @@ def audit_html_content(content: str, filename: str = "", html_path: Path | None 
                 "context": text
             })
 
+        if re.search(r"https?://|doi\.org|doi:\s*10\.", text, re.I):
+            issues.append({
+                "severity": "error",
+                "code": "heading_contains_url_or_doi",
+                "message": f"标题中检测到泄漏的 URL 或 DOI 杂质: '{text}'",
+                "context": text
+            })
+
     # 3. Audit Heading Numbering Hierarchy (gov_doc specific)
     if is_gov_doc:
+        first_h1_idx = next((idx for idx, hr in enumerate(heading_records) if "gov-h1" in hr["class"] or hr["tag"] == "h2"), None)
+        for idx, hr in enumerate(heading_records):
+            if ("gov-h2" in hr["class"] or hr["tag"] == "h3") and (first_h1_idx is not None and idx < first_h1_idx):
+                issues.append({
+                    "severity": "error",
+                    "code": "isolated_h2_before_h1",
+                    "message": f"公文版在一级章节出现前存在悬空二级标题: '{hr['text']}'",
+                    "context": hr['text']
+                })
+
         h1_items = [hr["text"] for hr in heading_records if "gov-h1" in hr["class"] or hr["tag"] == "h2"]
         h1_nums = []
         for text in h1_items:
             m = re.match(r"^([一二三四五六七八九十]+)、", text)
             if m:
                 h1_nums.append(m.group(1))
+
+        current_h1 = None
+        h2_counts = {}
+        for hr in heading_records:
+            if "gov-h1" in hr["class"] or hr["tag"] == "h2":
+                current_h1 = hr["text"]
+                h2_counts[current_h1] = 0
+            elif ("gov-h2" in hr["class"] or hr["tag"] == "h3") and current_h1:
+                h2_counts[current_h1] += 1
+        for h1_title, count in h2_counts.items():
+            if count > 8:
+                issues.append({
+                    "severity": "warning",
+                    "code": "excessive_subheadings_under_section",
+                    "message": f"章节 '{h1_title}' 挂接了多达 {count} 个二级小节，疑似大纲章节被降级拉平"
+                })
         
         # Check sequence
         expected_seq = CHINESE_NUMERALS[:len(h1_nums)]
@@ -234,7 +268,65 @@ def audit_html_content(content: str, filename: str = "", html_path: Path | None 
                 "message": f"参考文献编号异常: {'; '.join(err_msg_parts)} (共 {len(ref_numbers)} 条，范围 {min(ref_numbers)}~{max(ref_numbers)})"
             })
 
-    # 5. Summary determination
+    # 5. Audit Reference Formatting (GB/T 7714 [N] vs N. format in gov_doc)
+    if is_gov_doc and ref_items:
+        dot_refs = [txt for txt in ref_items if re.match(r"^\d+\.\s", txt.strip())]
+        if dot_refs and len(dot_refs) > len(ref_items) * 0.5:
+            issues.append({
+                "severity": "error",
+                "code": "ref_format_not_gbt7714",
+                "message": f"公文版参考文献未采用 GB/T 7714 强制的方括号标号 [序号]，而是采用了带句点的格式 (如 '{dot_refs[0][:30]}')"
+            })
+
+    # 6. Audit Tables and Table Caption Placement (gov_doc specific)
+    if is_gov_doc:
+        tables = soup.find_all("table")
+        for tbl in tables:
+            first_tr = tbl.find("tr")
+            if first_tr:
+                cols = len(first_tr.find_all(["th", "td"]))
+                if cols >= 4 and "dense-table" not in tbl.get("class", []):
+                    issues.append({
+                        "severity": "warning",
+                        "code": "table_lacks_dense_styling",
+                        "message": f"检测到 {cols} 列宽表格未应用紧凑字号 (.dense-table)，存在单字竖排风险"
+                    })
+            parent_sec = tbl.find_parent("section") or tbl
+            next_sib = parent_sec.find_next_sibling()
+            if next_sib and ("caption" in next_sib.get("class", []) or next_sib.find(class_="gov-caption-title")):
+                cap_txt = next_sib.get_text().strip()
+                if re.search(r"^(?:表|附表|Table)", cap_txt, re.I):
+                    issues.append({
+                        "severity": "error",
+                        "code": "table_caption_below_table",
+                        "message": f"检测到表题位于表格下方: '{cap_txt[:40]}'，违反 GB/T 7713 / GB/T 9704 '表题居上' 规范"
+                    })
+
+    # 7. Audit Untranslated Body Text & Draft Placeholders
+    raw_text = soup.get_text()
+    if re.search(r"(?:在线发表日期|published online)\s*:\s*xx\s+xx\s+xxxx", raw_text, re.I):
+        issues.append({
+            "severity": "error",
+            "code": "draft_placeholder_leaked",
+            "message": "检测到正文中泄漏了未清洗的出版日期草稿占位符 (在线发表日期：xx xx xxxx)"
+        })
+
+    body_ps = soup.find_all("p")
+    for p in body_ps:
+        if p.find_parent(class_=re.compile(r"ref|reference|footnote")):
+            continue
+        txt = p.get_text(strip=True)
+        if len(txt) > 100 and not any(allowed in txt.lower() for allowed in ALLOWED_END_MATTER):
+            ascii_chars = sum(1 for c in txt if ord(c) < 128)
+            if ascii_chars / len(txt) > 0.85:
+                issues.append({
+                    "severity": "error",
+                    "code": "untranslated_body_text",
+                    "message": f"检测到疑似大段未翻译英文正文 ({len(txt)} 字符): '{txt[:60]}...'"
+                })
+                break
+
+    # 8. Summary determination
     has_errors = any(i["severity"] == "error" for i in issues)
     has_warnings = any(i["severity"] == "warning" for i in issues)
     status = "failed" if has_errors else ("warning" if has_warnings else "passed")

@@ -77,6 +77,50 @@ class AuditLayoutTests(unittest.TestCase):
         self.assertEqual(res["status"], "failed")
         self.assertTrue(any(issue["code"] == "ref_style_downgrade" for issue in res["issues"]))
 
+    def test_audit_html_content_catches_url_in_heading(self):
+        html = """<!DOCTYPE html>
+<html>
+<body>
+  <h1>Article https://doi.org/10.1038/s41467-026-76011-7 人类大脑</h1>
+</body>
+</html>"""
+        res = audit_layout.audit_html_content(html, filename="paper.html")
+        self.assertEqual(res["status"], "failed")
+        self.assertTrue(any(issue["code"] == "heading_contains_url_or_doi" for issue in res["issues"]))
+
+    def test_audit_html_content_catches_table_caption_below(self):
+        html = """<!DOCTYPE html>
+<html>
+<body>
+  <div class="gov-header-org">自然·通讯 参阅文件</div>
+  <div class="gov-header-docno">DOI〔2026〕s41467-026-76011-7 号</div>
+  <section class="block table">
+    <table><tr><th>A</th><th>B</th></tr><tr><td>1</td><td>2</td></tr></table>
+  </section>
+  <section class="block caption">
+    <div class="gov-caption-title">表1 实验数据表</div>
+  </section>
+</body>
+</html>"""
+        res = audit_layout.audit_html_content(html, filename="test_公文版.html")
+        self.assertEqual(res["status"], "failed")
+        self.assertTrue(any(issue["code"] == "table_caption_below_table" for issue in res["issues"]))
+
+    def test_audit_html_content_catches_dot_ref_format(self):
+        html = """<!DOCTYPE html>
+<html>
+<body>
+  <div class="gov-header-org">自然 参阅文件</div>
+  <div class="gov-header-docno">DOI〔2026〕s41586-026-0001-1 号</div>
+  <div class="gov-ref-item">1. Author A. Nature, 2026.</div>
+  <div class="gov-ref-item">2. Author B. Science, 2026.</div>
+</body>
+</html>"""
+        res = audit_layout.audit_html_content(html, filename="test_公文版.html")
+        self.assertEqual(res["status"], "failed")
+        self.assertTrue(any(issue["code"] == "ref_format_not_gbt7714" for issue in res["issues"]))
+
 
 if __name__ == "__main__":
     unittest.main()
+

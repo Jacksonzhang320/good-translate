@@ -512,6 +512,28 @@ def _geometry_blocks(pdf, pages, out_dir, style, issues, scanning):
             spans = [s for l in lines for s in l.get('spans', []) if s.get('text', '').strip()]
             size = max((s['size'] for s in spans), default=style['body']['font_size_pt'])
 
+            # Split leading running header or DOI line if merged into this block
+            if len(lines) > 1:
+                first_text = ''.join(s.get('text', '') for s in lines[0].get('spans', [])).strip()
+                is_running_hdr = (
+                    first_text.lower() in SUSPICIOUS_RUNNING_HEADERS or
+                    bool(re.search(r'https?://|doi\.org', first_text, re.I)) or
+                    (lines[0]['bbox'][1] < 120 and any(w in first_text.lower().split() for w in ('article', 'review', 'perspective', 'letter', '述评', '综述')))
+                )
+                if is_running_hdr:
+                    h_box = list(lines[0]['bbox'])
+                    h_obj = _append(blocks, 'text', first_text, page_num, h_box)
+                    h_obj['is_running_header'] = True
+                    h_obj['style_id'] = 'running-header'
+                    lines = lines[1:]
+                    text = norm._join_lines([''.join(s.get('text', '') for s in l.get('spans', [])) for l in lines])
+                    if not text.strip():
+                        continue
+                    box = [min(l['bbox'][0] for l in lines), min(l['bbox'][1] for l in lines),
+                           max(l['bbox'][2] for l in lines), max(l['bbox'][3] for l in lines)]
+                    spans = [s for l in lines for s in l.get('spans', []) if s.get('text', '').strip()]
+                    size = max((s['size'] for s in spans), default=style['body']['font_size_pt'])
+
             # Split leading heading line if merged into this block by PyMuPDF
             if len(lines) > 1:
                 first_spans = [s for s in lines[0].get('spans', []) if s.get('text', '').strip()]
@@ -557,7 +579,9 @@ def _geometry_blocks(pdf, pages, out_dir, style, issues, scanning):
                 is_running_header = False
                 if kind == 'heading':
                     clean_h = text.strip().lower()
-                    if clean_h in SUSPICIOUS_RUNNING_HEADERS and box[1] < 120:
+                    if (clean_h in SUSPICIOUS_RUNNING_HEADERS or
+                        bool(re.search(r'https?://|doi\.org', clean_h)) or
+                        (box[1] < 120 and any(w in clean_h.split() for w in ('article', 'review', 'perspective', 'letter', '述评', '综述')))):
                         kind = 'text'
                         is_running_header = True
                 b_obj = _append(blocks, kind, text, page_num, box)
