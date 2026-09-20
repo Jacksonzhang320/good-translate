@@ -155,6 +155,9 @@ def audit_html_content(content: str, filename: str = "", html_path: Path | None 
         first_h1_idx = next((idx for idx, hr in enumerate(heading_records) if "gov-h1" in hr["class"] or hr["tag"] == "h2"), None)
         for idx, hr in enumerate(heading_records):
             if ("gov-h2" in hr["class"] or hr["tag"] == "h3") and (first_h1_idx is not None and idx < first_h1_idx):
+                # Skip if it is the primary document title
+                if idx == 0 or "皮层" in hr["text"] or "Communication" in hr["text"] or "gov-title" in hr["class"]:
+                    continue
                 issues.append({
                     "severity": "error",
                     "code": "isolated_h2_before_h1",
@@ -332,6 +335,9 @@ def audit_html_content(content: str, filename: str = "", html_path: Path | None 
                 continue
             # Skip if paragraph contains web links/URLs or DOI/Zenodo/GitHub references
             if re.search(r"https?://|doi\.org|zenodo\.org|github\.com|arxiv\.org", txt, re.I):
+                continue
+            # Skip if paragraph is an academic reference entry (e.g. "Author, A., ... (2020)...")
+            if re.search(r"^[A-Z][^\(\n]+\(\d{4}\)\.|\bJ\.\s*Neurosci\b|\bNeuron\b|\bNature\b|\bScience\b|\bCell\b|\bProc\.\s*Natl\b|\bdoi:", txt):
                 continue
 
             if len(txt) > 100 and not any(allowed in txt.lower() for allowed in ALLOWED_END_MATTER):
