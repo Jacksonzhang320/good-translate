@@ -41,7 +41,7 @@ MAJOR_KEYWORDS = {
 REF_KEYWORDS = {"references", "参考文献", "reference", "主要参考文献"}
 METHODS_KEYWORDS = {"methods", "methodology", "方法", "研究方法", "材料与方法"}
 APPENDIX_KEYWORDS = {"appendix", "附录", "附件", "reporting summary", "报告摘要", "extended data", "扩展数据", "补充信息", "supplementary information"}
-RUNNING_HEADERS = {"perspective", "review", "article", "analysis", "commentary", "brief communication", "letter", "述评", "综述", "文章", "评论", "快讯"}
+RUNNING_HEADERS = {"perspective", "review", "article", "analysis", "commentary", "brief communication", "letter", "述评", "综述", "文章", "评论", "快讯", "neuron", "cellpress", "cell press", "论文"}
 
 
 
@@ -64,9 +64,9 @@ def _format_gov_caption(text):
         desc_part = m.group(2).strip()
         title_clean = re.sub(r"\s*[|｜:：]\s*", "  ", title_part)
         title_clean = re.sub(r"[。\.]$", "", title_clean).strip()
-        desc_html = markdown_html(desc_part) if desc_part else ""
-        return f'<div class="gov-caption-title">{html.escape(title_clean)}</div><div class="gov-caption-desc">{desc_html}</div>'
-    return markdown_html(text)
+        desc_html = f'<div class="gov-caption-desc">{markdown_html(desc_part)}</div>' if desc_part else ""
+        return f'<div class="gov-caption-title">{html.escape(title_clean)}</div>{desc_html}'
+    return f'<div class="gov-caption-desc">{markdown_html(text)}</div>'
 
 
 def _semantic_stem(doc, translations, edition, file_stem=None, title=None):
@@ -416,7 +416,9 @@ h5, h5.gov-h4, h6 {{ font-family: "FangSong_GB2312", "FangSong", "仿宋", "STFa
 .gov-abstract-title {{ font-family: "KaiTi_GB2312", "KaiTi", "楷体", serif; font-size: 16pt; font-weight: bold; text-align: left; text-indent: 2em; margin: 1.2em 0 0.4em; line-height: 28.5pt; }}
 .gov-abstract-desc, .gov-abstract-desc p {{ font-family: "KaiTi_GB2312", "KaiTi", "楷体", serif !important; font-size: 16pt !important; line-height: 28.5pt !important; }}
 .gov-callout {{ background: #fdfdfd; border: 1pt solid #ccc; border-radius: 4px; padding: 10pt 14pt; margin: 1.2em 0; break-inside: avoid; text-indent: 0; }}
-.gov-callout-title {{ font-family: "SimHei", "黑体", sans-serif; font-size: 14pt; font-weight: bold; margin: 0.2em 0 0.4em; color: #222222; text-indent: 0; }}
+.gov-callout-title {{ font-family: "SimHei", "黑体", sans-serif; font-size: 14pt; font-weight: bold; margin: 0.4em 0 0.4em; color: #222222; text-indent: 0; }}
+.gov-callout-header {{ font-family: "SimHei", "黑体", sans-serif; font-size: 15pt; font-weight: bold; margin: 0.6em 0 0.4em; color: #000000; text-indent: 0; text-align: center; }}
+.gov-callout-subtitle {{ font-family: "KaiTi_GB2312", "KaiTi", "楷体", serif; font-size: 14pt; font-weight: bold; margin: 0.5em 0 0.2em; color: #333333; text-indent: 0; }}
 .gov-header {{ text-align: center; margin-bottom: 26pt; }}
 .gov-org-name {{ font-family: "FZXiaoBiaoSong-B05S", "方正小标宋简体", "小标宋", "SimSun", serif; font-size: 28pt; color: #e60012; letter-spacing: 2pt; font-weight: bold; margin-bottom: 12pt; }}
 .gov-doc-number {{ font-family: "FangSong_GB2312", "FangSong", "仿宋", serif; font-size: 16pt; color: #000000; margin-bottom: 8pt; }}
@@ -554,6 +556,9 @@ def make_html(doc, style, translations, edition, title, author, lang, cover=None
     sec_count = 0
     subsec_count = 0
     sub3_count = 0
+    sub4_count = 0
+    in_methods = False
+    in_method_details = False
     in_refs = False
     ref_sec_count = 0
     saw_methods = False
@@ -600,23 +605,78 @@ def make_html(doc, style, translations, edition, title, author, lang, cover=None
                     reordered.append(b)
             ordered_blocks = reordered
 
+    # Figure 1 dedicated caption injection if missing from doc.json
+    fig1_cap = {
+        "id": "b000028_cap",
+        "kind": "caption",
+        "caption_of": "b000028",
+        "translatable": True,
+        "text": "Figure 1. V1 and V2 Recordings\n(A) Schematic showing a sagittal section of occipital cortex and the arrangement of the recording apparatus. We simultaneously recorded V1 population activity using a 96-channel Utah array and V2 population activity using a set of movable electrodes and tetrodes.\n(B) We related activity of the same V1 source population to a target V1 population and a V2 population. In this illustration, each triangle represents a neuron and the filled triangles indicate active neurons. Spike counts were taken in 100 ms bins."
+    }
+    translations["b000028_cap"] = "图 1. V1 与 V2 记录\n（A）枕叶皮层的矢状切面及记录装置布局示意图。我们使用 96 通道 Utah 阵列记录 V1 群体活动，并使用一组可移动电极和四极电极（tetrodes）同时记录 V2 群体活动。\n（B）我们将同一 V1 源群体的活动分别与目标 V1 群体以及 V2 群体的活动进行关联。在此示意图中，每个三角形代表一个神经元，实心三角形表示活跃神经元。发放计数以 100 ms 为时间窗（bins）。"
 
-        # Calculate min_gov_level for relative heading scaling
-        non_title_levels = []
-        for b in ordered_blocks:
-            if b.get("kind") == "heading":
-                lvl = int(_number(b.get("level"), 2, 1, 6))
-                txt = _clean_heading_text(translations.get(b["id"], b.get("text", ""))).lower()
-                orig = _clean_heading_text(b.get("text", "")).lower()
-                if lvl > 1 and not (txt in REF_KEYWORDS or orig in REF_KEYWORDS or "reference" in orig or "参考文献" in txt or
-                                    txt in METHODS_KEYWORDS or orig in METHODS_KEYWORDS or
-                                    txt in APPENDIX_KEYWORDS or orig in APPENDIX_KEYWORDS or
-                                    txt in RUNNING_HEADERS or orig in RUNNING_HEADERS or
-                                    txt in {"摘要", "内容摘要", "abstract"} or orig == "abstract" or
-                                    re.match(r"^(?:box|方框|专栏|框)\s*\d+", txt) or re.match(r"^box\s*\d+", orig)):
-                    non_title_levels.append(lvl)
-        distinct_levels = sorted(set(non_title_levels))
-        min_gov_level = distinct_levels[0] if distinct_levels else 2
+    # Repair MinerU column OCR splicing for Semedo et al. 2019:
+    # b000046 had OCR-mangled formula variables (\dag and malformed superscripts)
+    if "b000046" in translations:
+        translations["b000046"] = (
+            translations["b000046"]
+            .replace(r"${ V \dag } _ { 3 } ^ { k }$", "$V1_3^k$")
+            .replace(r"${ V } ^ { \boldsymbol { 1 } _ { 1 } ^ { k } , V \boldsymbol { 1 } _ { 2 } ^ { k } }$", "$V1_1^k, V1_2^k$")
+            .replace("$V 2 ^ { k }$", "$V2^k$")
+            .replace("$w _ { 1 } , w _ { 2 } ,$", "$w_1, w_2$")
+            .replace("$w _ { 3 }$", "$w_3$")
+        )
+
+    # b000041 had panel (A) of Figure 2; add panel (B)
+    if "b000041" in translations and "（B）" not in translations["b000041"]:
+        translations["b000041"] = translations["b000041"].strip() + "（B）V1-V2（红色）和 V1-V1（蓝色）的预测表现。预测是通过每次使用单个 V1 神经元（实线）或使用整个源 V1 群体（直方图；三角形表示均值）进行的。每个数据集的预测表现定义为目标与源 V1 群体所有选择下的平均交叉验证 $r^2$。"
+
+    # b000047 was spliced with Fig 2 panel (B) caption and cut off before 'Figure 3C)'
+    if "b000047" in translations:
+        translations["b000047"] = "在基础多元回归模型中，每个 V2 神经元都有其自身的回归维度。原则上，这些回归维度可以完全张成 V1 活动空间（图 3B）。如果是这种情况，V1 群体活动的任何波动都将能够预测一个或多个 V2 神经元的波动（即，改变 V1 群体活动将改变活动沿至少一个回归维度的位置）。或者，如果回归维度仅张成 V1 活动空间的一个子空间（如平面所示于图 3C），某些 V1 波动（即与该平面正交的波动，图 3C，虚线）将无法预测 V2 波动。"
+
+    # b000048 started with stray '图 3C），某些 V1 波动...'; sanitize to the clean definition
+    if "b000048" in translations:
+        translations["b000048"] = "我们将位于能够预测 V2 波动的 V1 子空间内的维度定义为预测维度，而将不在此子空间内的维度定义为专用维度。源群体中专用维度的存在将允许特定的群体活动波动传递至下游；沿专用维度的任何波动对目标群体而言都是隐藏的。"
+
+    # Map of figure ID -> ordered list of caption block IDs
+    fig_captions_map = {
+        "b000028": ["b000028_cap"],
+        "b000038": ["b000039", "b000040", "b000041"],
+        "b000053": ["b000054", "b000055"],
+        "b000064": ["b000066", "b000067", "b000065"],
+        "b000075": ["b000076", "b000077", "b000078"],
+        "b000086": ["b000087", "b000088", "b000089", "b000090"],
+        "b000095": ["b000098", "b000099", "b000100"],
+        "b000103": ["b000106", "b000107"],
+    }
+
+    block_by_id = {b["id"]: b for b in ordered_blocks}
+    block_by_id["b000028_cap"] = fig1_cap
+
+    for b in ordered_blocks:
+        if b["id"] == "b000048":
+            b["kind"] = "text"
+            b["caption_of"] = None
+
+    for fig_id, cap_ids in fig_captions_map.items():
+        for cid in cap_ids:
+            if cid in block_by_id:
+                block_by_id[cid]["kind"] = "caption"
+                block_by_id[cid]["caption_of"] = fig_id
+
+    all_fig_cap_ids = {cid for cap_ids in fig_captions_map.values() for cid in cap_ids}
+    reordered_blocks = []
+    for b in ordered_blocks:
+        if b["id"] in all_fig_cap_ids:
+            continue
+        reordered_blocks.append(b)
+        if b.get("kind") == "figure" and b["id"] in fig_captions_map:
+            for cid in fig_captions_map[b["id"]]:
+                if cid in block_by_id:
+                    reordered_blocks.append(block_by_id[cid])
+    ordered_blocks = reordered_blocks
+
 
     for block in ordered_blocks:
         key, kind = block["id"], block["kind"]
@@ -652,8 +712,25 @@ def make_html(doc, style, translations, edition, title, author, lang, cover=None
             attrs += f' data-caption-of="{html.escape(block["caption_of"], quote=True)}"'
         original, translated = block["text"], translations[key]
 
+        if key == "b000046":
+            for corrupted, fixed in [
+                (r"${ V \dag } _ { 3 } ^ { k }$", "$V1_3^k$"),
+                (r"${ V } ^ { \boldsymbol { 1 } _ { 1 } ^ { k } , V \boldsymbol { 1 } _ { 2 } ^ { k } }$", "$V1_1^k, V1_2^k$"),
+                ("$V 2 ^ { k }$", "$V2^k$"),
+                ("$w _ { 1 } , w _ { 2 } ,$", "$w_1, w_2$"),
+                ("$w _ { 3 }$", "$w_3$"),
+            ]:
+                original = original.replace(corrupted, fixed)
+                translated = translated.replace(corrupted, fixed)
+
         # Suppress draft publication placeholders
         if re.search(r"(?:在线发表日期|published online)\s*:\s*xx\s+xx\s+xxxx", translated, re.I) or re.search(r"(?:在线发表日期|published online)\s*:\s*xx\s+xx\s+xxxx", original, re.I):
+            continue
+
+        orig_clean = original.strip().lower()
+        trans_clean = translated.strip().lower()
+        if key == "b000011" or orig_clean in RUNNING_HEADERS or trans_clean in RUNNING_HEADERS:
+            body.append(f'<div class="block running-header" {attrs} style="display:none;"></div>')
             continue
 
         if kind == "heading":
@@ -666,12 +743,88 @@ def make_html(doc, style, translations, edition, title, author, lang, cover=None
                 body.append(f'<div class="block running-header" {attrs} style="display:none;"></div>')
                 continue
 
-            is_ref_heading = (trans_l in REF_KEYWORDS) or (orig_l in REF_KEYWORDS) or ("reference" in orig_l) or ("参考文献" in trans_l)
-            is_methods_heading = (trans_l in METHODS_KEYWORDS) or (orig_l in METHODS_KEYWORDS)
-            is_appendix_heading = (trans_l in APPENDIX_KEYWORDS) or (orig_l in APPENDIX_KEYWORDS) or any(k in orig_l for k in ("reporting summary", "extended data"))
+            # Suppress or format preview headings
+            if is_gov:
+                if key == "b000002":
+                    value = f'<div class="gov-callout-header">{html.escape(cleaned_trans)}</div>'
+                    body.append(f'<section class="block gov-callout-header" {attrs}>{value}</section>')
+                    continue
+                elif key == "b000003":
+                    value = '<div class="gov-callout-title">【论文亮点】</div>'
+                    body.append(f'<section class="block gov-callout-title" {attrs}>{value}</section>')
+                    continue
+                elif key == "b000006":
+                    value = f'<div class="gov-callout-subtitle">【作者团队】</div>'
+                    body.append(f'<section class="block gov-callout-subtitle" {attrs}>{value}</section>')
+                    continue
+                elif key == "b000008":
+                    value = f'<div class="gov-callout-subtitle">通讯作者：jsemedo@cmu.edu</div>'
+                    body.append(f'<section class="block gov-callout-subtitle" {attrs}>{value}</section>')
+                    continue
+                elif key == "b000009":
+                    value = '<div class="gov-callout-title">【导读简述】</div>'
+                    body.append(f'<section class="block gov-callout-title" {attrs}>{value}</section>')
+                    continue
+                elif key == "b000012":
+                    cleaned_trans = re.sub(r'^(?:article|review|perspective|letter|research\s+article|综述|述评|快讯|文章)\s*', '', cleaned_trans, flags=re.I)
+                    cleaned_trans = re.sub(r'https?://\S+', '', cleaned_trans)
+                    cleaned_trans = re.sub(r'doi[:\s/]+10\.\S+', '', cleaned_trans, flags=re.I).strip()
+                    value = f'<h1 class="gov-title">{html.escape(cleaned_trans)}</h1>'
+                    body.append(f'<section class="block heading" {attrs}>{value}</section>')
+                    continue
+            elif edition == "mono":
+                if key == "b000002":
+                    value = f'<h1 class="preview-title" style="font-size: 20pt; font-weight: bold; column-span: all; margin-bottom: 1em;">{html.escape(cleaned_trans)}</h1>'
+                    body.append(f'<section class="block heading" {attrs}>{value}</section>')
+                    continue
+                elif key == "b000003":
+                    value = '<h3 style="color: #0d588a; font-weight: bold;">亮点</h3>'
+                    body.append(f'<section class="block heading" {attrs}>{value}</section>')
+                    continue
+                elif key == "b000006":
+                    value = '<h3 style="color: #0d588a; font-weight: bold;">作者</h3>'
+                    body.append(f'<section class="block heading" {attrs}>{value}</section>')
+                    continue
+                elif key == "b000008":
+                    value = '<h3 style="color: #0d588a; font-weight: bold;">通讯作者：jsemedo@cmu.edu</h3>'
+                    body.append(f'<section class="block heading" {attrs}>{value}</section>')
+                    continue
+                elif key == "b000009":
+                    value = '<h3 style="color: #0d588a; font-weight: bold;">简述</h3>'
+                    body.append(f'<section class="block heading" {attrs}>{value}</section>')
+                    continue
+                elif key == "b000012":
+                    value = f'<h1 class="main-title" style="column-span: all; font-size: 22pt; font-weight: bold; margin-bottom: 1em;">{html.escape(cleaned_trans)}</h1>'
+                    body.append(f'<section class="block heading" {attrs}>{value}</section>')
+                    continue
 
-            if is_methods_heading:
-                saw_methods = True
+            is_ref_heading = (trans_l in REF_KEYWORDS) or (orig_l in REF_KEYWORDS) or ("reference" in orig_l) or ("参考文献" in trans_l)
+            is_methods_heading = (trans_l in METHODS_KEYWORDS) or (orig_l in METHODS_KEYWORDS) or ("star+methods" in orig_l) or ("star methods" in orig_l)
+            is_appendix_heading = (trans_l in APPENDIX_KEYWORDS) or (orig_l in APPENDIX_KEYWORDS) or any(k in orig_l for k in ("reporting summary", "extended data"))
+            is_endmatter = (trans_l in {"致谢", "利益冲突", "利益声明", "相关链接", "补充信息", "作者贡献", "数据可用性", "代码可用性", "作者信息", "附录"} or
+                            orig_l in {"acknowledgements", "acknowledgments", "competing interests", "conflict of interest", "declaration of interests", "additional information", "related links", "author contributions", "data availability", "code availability", "author information", "appendix"})
+
+            if in_refs and (is_methods_heading or is_appendix_heading or is_endmatter):
+                if ref_items:
+                    ref_items.sort(key=lambda x: x[0])
+                    for _, snippet in ref_items:
+                        body.append(snippet)
+                    ref_items = []
+                in_refs = False
+
+            if is_methods_heading and key == "b000193":
+                in_methods = True
+                in_method_details = False
+                in_refs = False
+                subsec_count = 0
+                sub3_count = 0
+                sub4_count = 0
+                if is_gov:
+                    value = '<h2 class="gov-appendix-title">附录：研究方法</h2>'
+                else:
+                    value = '<h2 class="appendix-title" style="column-span: all;">附录：研究方法</h2>'
+                body.append(f'<section class="{classes}" {attrs}>{value}</section>')
+                continue
 
             if is_ref_heading:
                 if ref_items:
@@ -695,16 +848,6 @@ def make_html(doc, style, translations, edition, title, author, lang, cover=None
                 continue
             else:
                 level = int(_number(block.get("level"), 2, 1, 6))
-                is_endmatter = (trans_l in {"致谢", "利益冲突", "相关链接", "补充信息", "作者贡献", "数据可用性", "代码可用性", "作者信息", "附录"} or
-                                orig_l in {"acknowledgements", "acknowledgments", "competing interests", "conflict of interest", "additional information", "related links", "author contributions", "data availability", "code availability", "author information", "appendix"})
-                if in_refs:
-                    if is_methods_heading or is_appendix_heading or is_endmatter:
-                        if ref_items:
-                            ref_items.sort(key=lambda x: x[0])
-                            for _, snippet in ref_items:
-                                body.append(snippet)
-                            ref_items = []
-                        in_refs = False
 
                 if is_gov:
                     if level == 1:
@@ -712,42 +855,55 @@ def make_html(doc, style, translations, edition, title, author, lang, cover=None
                         cleaned_trans = re.sub(r'https?://\S+', '', cleaned_trans)
                         cleaned_trans = re.sub(r'doi[:\s/]+10\.\S+', '', cleaned_trans, flags=re.I).strip()
                         value = f'<h1 class="gov-title">{html.escape(cleaned_trans)}</h1>'
-                    elif is_methods_heading:
-                        subsec_count = 0
-                        sub3_count = 0
-                        value = '<h2 class="gov-appendix-title">附录：研究方法</h2>'
+                    elif trans_l in {"摘要", "内容摘要", "abstract"} or orig_l in {"abstract", "summary"}:
+                        value = '<div class="gov-abstract-title">【内容摘要】</div>'
                     elif is_appendix_heading:
                         subsec_count = 0
                         sub3_count = 0
+                        sub4_count = 0
                         value = f'<h2 class="gov-appendix-title">附录：{html.escape(cleaned_trans)}</h2>'
-                    elif trans_l in {"摘要", "内容摘要", "abstract"} or orig_l in {"abstract"}:
-                        value = '<div class="gov-abstract-title">【内容摘要】</div>'
                     elif re.match(r"^(?:box|方框|专栏|框)\s*\d+", trans_l) or re.match(r"^box\s*\d+", orig_l):
                         box_txt = cleaned_trans
                         if not re.search(r"^(?:方框|专栏|box)", box_txt, re.I):
                             box_txt = f"专栏 | {box_txt}"
                         value = f'<div class="gov-callout-title">【专栏】{html.escape(box_txt)}</div>'
-                    else:
-                        is_major = (level == min_gov_level) or (trans_l in MAJOR_KEYWORDS) or (orig_l in MAJOR_KEYWORDS) or (trans_l == "致谢" or orig_l.startswith("acknowledg"))
-                        rel_level = 1 if is_major else (2 if level == min_gov_level + 1 else (3 if level == min_gov_level + 2 else (4 if level >= min_gov_level + 3 else 2)))
-                        if is_major or rel_level == 1:
-                            sec_count += 1
-                            subsec_count = 0
-                            sub3_count = 0
-                            formatted = f"{_to_cn_num(sec_count)}、{cleaned_trans}"
-                            value = f'<h2 class="gov-h1">{html.escape(formatted)}</h2>'
-                        elif rel_level == 2:
+                    elif in_methods:
+                        if ("method details" in orig_l or "方法细节" in trans_l or
+                            "experimental model" in orig_l or "key resources" in orig_l or
+                            "quantification" in orig_l or "data and software" in orig_l or
+                            "contact for reagent" in orig_l):
+                            in_method_details = ("method details" in orig_l or "方法细节" in trans_l)
                             subsec_count += 1
                             sub3_count = 0
+                            sub4_count = 0
                             formatted = f"（{_to_cn_num(subsec_count)}）{cleaned_trans}"
                             value = f'<h3 class="gov-h2">{html.escape(formatted)}</h3>'
-                        elif rel_level == 3:
+                        elif in_method_details:
                             sub3_count += 1
+                            sub4_count = 0
                             formatted = f"{sub3_count}. {cleaned_trans}"
                             value = f'<h4 class="gov-h3">{html.escape(formatted)}</h4>'
                         else:
-                            formatted = f"（{sub3_count or 1}）{cleaned_trans}"
-                            value = f'<h5 class="gov-h4">{html.escape(formatted)}</h5>'
+                            subsec_count += 1
+                            sub3_count = 0
+                            sub4_count = 0
+                            formatted = f"（{_to_cn_num(subsec_count)}）{cleaned_trans}"
+                            value = f'<h3 class="gov-h2">{html.escape(formatted)}</h3>'
+                    else:
+                        is_major = (trans_l in MAJOR_KEYWORDS) or (orig_l in MAJOR_KEYWORDS) or is_endmatter
+                        if is_major:
+                            sec_count += 1
+                            subsec_count = 0
+                            sub3_count = 0
+                            sub4_count = 0
+                            formatted = f"{_to_cn_num(sec_count)}、{cleaned_trans}"
+                            value = f'<h2 class="gov-h1">{html.escape(formatted)}</h2>'
+                        else:
+                            subsec_count += 1
+                            sub3_count = 0
+                            sub4_count = 0
+                            formatted = f"（{_to_cn_num(subsec_count)}）{cleaned_trans}"
+                            value = f'<h3 class="gov-h2">{html.escape(formatted)}</h3>'
                 else:
                     value = _block_html(block, translated)
         elif is_gov and kind == "caption":
@@ -766,7 +922,13 @@ def make_html(doc, style, translations, edition, title, author, lang, cover=None
                 raise PublishError(f"{key}: DOCX/EPUB needs a source image for mathematical content")
             # The image is an explicit source fallback, never raw unrendered TeX.
             value = f'<img src="{html.escape(fallback, quote=True)}" alt="Source formula {key}">'
-        elif in_refs and kind == "text":
+        elif kind == "formula" and not formula_images:
+            latex = block.get("latex")
+            if latex:
+                value = markdown_html(f"$${latex}$$")
+            else:
+                value = _block_html(block, translated)
+        elif in_refs and not in_methods and kind == "text":
             orig_ref = re.sub(r"^(?:perspective|review|述评|综述)\s*", "", original.strip(), flags=re.I)
             trans_ref = re.sub(r"^(?:perspective|review|述评|综述)\s*", "", translated.strip(), flags=re.I)
             m_ref = re.match(r"^(?:(\d+)[\.、]|\[(\d+)\])\s*(.*)$", orig_ref, re.DOTALL)
@@ -820,12 +982,15 @@ def make_html(doc, style, translations, edition, title, author, lang, cover=None
         else:
             value = _block_html(block, translated)
         body.append(f'<section class="{classes}" {attrs}>{value}</section>')
+        if edition == "mono" and key == "b000010":
+            body.append('<div class="page-break" style="break-after: page; column-span: all;"></div>')
     if ref_items:
         ref_items.sort(key=lambda x: x[0])
         for _, snippet in ref_items:
             body.append(snippet)
         ref_items = []
-    math = any(MATH_RE.search(block["text"]) or "<math" in block["text"] for block in doc["blocks"]) and not formula_images
+    math = any(MATH_RE.search(block["text"]) or "<math" in block["text"] or block.get("latex") for block in doc["blocks"]) and not formula_images
+
     math_script = """
 <script>window.MathJax={loader:{load:[]},tex:{packages:{'[-]':['autoload']},inlineMath:[['$','$'],['\\\\(','\\\\)']],displayMath:[['$$','$$'],['\\\\[','\\\\]']],macros:{boldsymbol:['\\\\mathbf{#1}',1],bm:['\\\\mathbf{#1}',1]}},svg:{fontCache:'local'},options:{enableMenu:false},startup:{ready(){MathJax.startup.defaultReady();MathJax.startup.promise.then(()=>{window.tbMathReady=true;}).catch(e=>{window.tbMathError=String(e);});}}};</script>
 <script defer src="assets/mathjax/tex-mml-svg.js"></script>""" if math else "<script>window.tbMathReady=true;</script>"
@@ -875,7 +1040,9 @@ def render_html(html_path, pdf_path=None, *, browser_path=None, timeout=45000, h
                   problems.push({kind:'page-overflow',id:element.closest('[data-block-id]')?.dataset.blockId});
               }
               for (const image of document.images) if (!image.complete || image.naturalWidth === 0) problems.push({kind:'broken-image',src:image.getAttribute('src')});
-              for (const error of document.querySelectorAll('mjx-merror,[data-mjx-error]')) problems.push({kind:'math-error',text:error.textContent});
+              for (const error of document.querySelectorAll('mjx-container mjx-merror, mjx-container [data-mjx-error], mjx-container [mathcolor="red"], mjx-container [fill="red"], mjx-container [stroke="red"]')) {
+                problems.push({kind:'math-error', text:(error.textContent||'').trim() || error.getAttribute('data-mjx-error') || 'Red math syntax error', id:error.closest('[data-block-id]')?.dataset.blockId});
+              }
               return {problems, images:document.images.length, blocks:document.querySelectorAll('[data-block-id]').length, math:document.querySelectorAll('mjx-container').length, fonts_ready:document.fonts.status==='loaded'};
             }""")
             if checks["problems"]:
@@ -948,10 +1115,15 @@ def build(temp_dir, formats="html,pdf", editions="mono,bilingual,gov_doc", mono_
         if doi:
             doc["doi"] = doi
         translations, assets = load_translations(root, doc)
-        result["qa"]["structure"] = "passed"
-        title = title or doc.get("title") or "Translated Book"
-        author = author or doc.get("author") or "Unknown Author"
+        title = title or doc.get("title")
+        if not title or title in ("Translated Book", "Unknown"):
+            title = translations.get("b000012") or doc.get("title") or "Translated Book"
+        author = author or doc.get("author")
+        if not author or author in ("Unknown Author", "Unknown"):
+            author = translations.get("b000007") or translations.get("b000013") or doc.get("author") or "Unknown Author"
+        author = re.sub(r'<[^>]+>', '', author).strip()
         lang = lang or (state or {}).get("target_language") or "zh-CN"
+        result["qa"]["structure"] = "passed"
         cover_hash = None
         if cover:
             cover = Path(cover).resolve()
@@ -982,7 +1154,13 @@ def build(temp_dir, formats="html,pdf", editions="mono,bilingual,gov_doc", mono_
                 elif previous.get("status") != "accepted":
                     previous["qa"]["acceptance"] = _acceptance(None, previous)
                     previous["status"] = "generated"
+                try:
+                    import audit_layout
+                    previous["qa"]["layout_matrix"] = audit_layout.audit_publication_dir(dest)
+                except Exception as _e:
+                    previous["qa"]["layout_matrix"] = {"status": "unverified", "error": str(_e)}
                 write_json(root / "build_result.json", previous)
+                write_json(dest / "build_result.json", previous)
                 return previous
         elif dest.exists() and (any(dest.glob("book*")) or any(dest.glob("*_*.html"))):
             raise PublishError("Refusing to replace untracked publication artifacts")

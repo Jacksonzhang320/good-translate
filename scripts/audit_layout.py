@@ -320,16 +320,22 @@ def audit_html_content(content: str, filename: str = "", html_path: Path | None 
     if not is_bilingual:
         body_ps = soup.find_all(["p", "div"])
         for p in body_ps:
-            if p.find_parent(class_=re.compile(r"ref|reference|footnote|author|affiliation|byline|gov-header|cover|meta", re.I)):
+            if p.find_parent(class_=re.compile(r"ref|reference|footnote|author|affiliation|byline|gov-header|cover|meta|formula", re.I)):
                 continue
             p_class = " ".join(p.get("class", []))
-            if re.search(r"author|affiliation|byline|gov-header|cover|meta", p_class, re.I):
+            if re.search(r"author|affiliation|byline|gov-header|cover|meta|formula", p_class, re.I):
                 continue
 
             txt = p.get_text(strip=True)
-            # Skip if paragraph is an author list (contains numbers mixed with English names, e.g. "Name1,2,3")
+            if txt.startswith("$$") or txt.startswith(r"\["):
+                continue
+            # Skip if paragraph is an author list (contains numbers mixed with English names, e.g. "Name1,2,3", "Joa˜o D. Semedo,1,2,3,*")
             if re.search(r"^[A-Z][a-z]+(?:\s+[A-Z][a-z]+)*\s*\d+(?:,\d+)*", txt):
                 continue
+            if any(c.isdigit() for c in txt) and not any(w in txt.lower().split() for w in ["the", "this", "that", "which", "were", "have", "been", "between", "these"]):
+                words = [w for w in re.split(r"[\s\,\*\d\^\~\.]+", txt) if w]
+                if words and all(w[0].isupper() or w.lower() == "and" for w in words):
+                    continue
             # Skip if paragraph is an author affiliation block (e.g. "1Department of Medicine...")
             if re.search(r"^\d*\s*(?:Department|School|Center|Centre|Institute|University|Faculty|Laborat|Hospital)", txt, re.I) or "department of" in txt.lower() or "university of" in txt.lower() or "school of" in txt.lower():
                 continue

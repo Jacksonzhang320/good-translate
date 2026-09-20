@@ -243,33 +243,35 @@ The Agent **MUST** actively inspect the publication before calling `accept-publi
    - Leaked draft placeholders (`draft_placeholder_leaked`) and untranslated English body prose (`untranslated_body_text`);
    - Missing gov_doc metadata and Phase 3 term alias leakage (`term_drift_alias_leak`). If any term alias leakage is reported, run `pipeline.py patch-terms <run>` to eliminate it immediately before acceptance. Fix any `[ERROR]` before proceeding.
 
-2. **Reference Integrity & GB/T 7714 Styling Review**:
+2. **Reference Integrity & Boundary Isolation Review (参考文献闭合与附录隔离)**:
    - **No Premature Break**: Confirm the reference list is not cut short or broken into by OCR page-top headers (e.g. *Perspective*, *Review*, *述评*, *综述*).
    - **Monotonic Continuity**: Verify references run strictly 1 to N without missing numbers, duplicates, or reversals.
    - **Consistent Typography**: In `gov_doc`, verify all references are formatted with standard GB/T 7714 hanging indent (`.gov-ref-item`) in compact 10pt font, never falling back to generic 16pt `<ol><li>` body text.
+   - **Visual Boundary Isolation Gate (严格闭合后文隔离)**: When papers contain back-matter following references (such as *Neuron*/*Cell* STAR+Methods, Extended Methods, Supplementary Information, or Appendices), the parser and publisher MUST strictly terminate the references environment upon encountering boundary headers (`STAR+METHODS`, `Methods`, `附录：研究方法`, `方法细节`, `关键资源表`). Subsequent body paragraphs MUST render as normal 16pt document body text, NEVER as hanging-indent `.gov-ref-item`.
 
-3. **Heading Hierarchy & Spurious Header Review**:
+3. **Zero Red Math Error Gate (公式标红零容忍硬门禁 / MathJax DOM Gate)**:
+   - **Playwright DOM Error Detection**: The publisher actively inspects the rendered DOM for syntax failures and unparsed macros: `mjx-container mjx-merror, mjx-container [data-mjx-error], mjx-container [mathcolor="red"], mjx-container [fill="red"], mjx-container [stroke="red"]`. Any occurrence immediately aborts the build and marks `status: failed`.
+   - **Dual-side Sanitization**: In bilingual editions, math sanitization must be applied to both original (English) and translated (Chinese) blocks to prevent raw OCR-corrupted LaTeX tokens (e.g. `\dag`, unclosed braces) in original text from triggering red math errors.
+
+4. **Heading Hierarchy & Spurious Header Review**:
    - Inspect document outline: ensure no OCR running headers or column tags (e.g., `Perspective`, `Review`, `Article`, `Analysis`, `Commentary`, `述评`, `综述`, `快讯`) became visible `<h1>` or `<h2>` headings.
    - For `gov_doc`, ensure heading numbering adheres strictly to standard official hierarchy (`一、` -> `（一）` -> `1.` -> `（1）`).
 
-4. **Visual Contact Sheet Inspection via `view_file`**:
-   - Generate preview sheets:
-     ```text
-     uv run --project "{baseDir}" python "{baseDir}/scripts/qa_preview.py" pdf "<run>/publish/<hash>/<edition>.pdf" --out "<run>/qa/previews" --label "<edition>"
-     ```
-   - The Agent MUST call `view_file` to visually inspect contact sheets of critical layout transitions:
+5. **Multi-Scale Visual Inspection via `view_file` (多尺度视觉质检验收)**:
+   - **Overview Contact Sheets**: Generate preview sheets with `qa_preview.py pdf` to verify page geometry, two-column balance, header/footer placement, and broad layout.
+   - **High-Resolution / 1:1 Targeted Inspection**: Low-resolution thumbnails can obscure fine LaTeX formula rendering errors or font-size mismatches. The Agent MUST inspect high-resolution page previews (or 1:1 crops) via `view_file` for:
      - The first title page (red header, title, authors);
-     - The first figure / table page (image placement, caption alignment);
-     - The reference list transition page and final reference page (hanging indent consistency, no stray headings);
-     - The end-matter pages (acknowledgments, competing interests, appendices).
+     - Pages containing dense mathematical formulas (confirming 0 red error glyphs and crisp notation);
+     - The reference list transition and termination boundary (confirming clean transition into STAR Methods / Appendices and correct body typography);
+     - Representative figures and tables (captions positioned correctly, no overflow).
 
-5. **Official Document Metadata Verification**:
+6. **Official Document Metadata Verification**:
    - Verify the red issuing authority displays the verified journal name (e.g., `自然·神经科学 参阅文件`).
    - Verify the issue number displays the official DOI (e.g., `DOI〔2026〕s41593-026-02314-z 号`).
    - **STRICT REJECTION**: Reject any publication displaying generic placeholders (`学术期刊译情参阅` or random hex hashes `编号：...`) when translating published papers.
 
-6. **Acceptance Evidence Commitment**:
-   Only after completing the audit, call `pipeline.py accept-publish` with concrete evidence (pages checked, reference range, absence of false headings). Report the run complete only when `pipeline.py status` says `accepted`. Return the exact paths and distinguish monolingual from bilingual and official document files.
+7. **Acceptance Evidence Commitment**:
+   Only after completing the audit, call `pipeline.py accept-publish` with concrete evidence (exact pages checked at 1:1 resolution, 0 red math errors confirmed, reference boundary verified, absence of false headings). Report the run complete only when `pipeline.py status` says `accepted`. Return the exact paths and distinguish monolingual from bilingual and official document files.
 
 Run `pipeline.py cleanup` only after acceptance and only when cleanup is wanted.
 It preserves source contracts, chunks, outputs, glossary, state, assets, QA,

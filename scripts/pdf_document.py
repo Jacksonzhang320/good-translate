@@ -74,12 +74,14 @@ def _source_line_page(text, box, page_num, pages):
     for candidate in (page_num, page_num + 1):
         if not 1 <= candidate <= len(pages):
             continue
-        for source in pages[candidate - 1]['lines']:
-            if not _covered(box, [source['bbox']], .45):
-                continue
-            score = SequenceMatcher(
-                None, needle, _normalized_line_text(source['text'])).ratio()
-            scores.append((score, candidate))
+        candidate_lines = [source for source in pages[candidate - 1]['lines']
+                           if _covered(source['bbox'], [box], .45) or _covered(box, [source['bbox']], .45)]
+        if not candidate_lines:
+            continue
+        candidate_text = ''.join(source['text'] for source in candidate_lines)
+        score = SequenceMatcher(
+            None, needle, _normalized_line_text(candidate_text)).ratio()
+        scores.append((score, candidate))
     best = max(scores, default=(0, None))
     return best[1] if best[0] >= .35 else None
 
@@ -882,7 +884,11 @@ def build_document(pdf_path, out_dir, mineru_dir=None, ocr_pdf=None):
                 elif in_references and any(end_word in norm_txt for end_word in (
                     'acknowledgements', 'acknowledgments', '致谢', '利益冲突',
                     'competing interests', 'supplementary information', '补充信息',
-                    '附录', 'appendix', 'author information', '作者信息')):
+                    '附录', 'appendix', 'author information', '作者信息',
+                    'star+methods', 'star methods', 'methods', 'method details',
+                    'materials and methods', 'key resources table', '材料与方法',
+                    '研究方法', '方法细节', '关键资源表', '实验模型', '定量与统计分析',
+                    '数据与软件可用性', 'data and software availability')):
                     in_references = False
             elif in_references:
                 block['is_reference'] = True
