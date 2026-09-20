@@ -51,7 +51,7 @@ class ProgressHUD:
         self._poll_data()
 
     def _init_window(self):
-        self.root.title("good-translate v2.1 进度监控")
+        self.root.title("good-translate v2.2 进度监控")
         self.root.overrideredirect(True)  # Frameless modern card
         self.root.configure(bg=BORDER_COLOR)
 
@@ -84,7 +84,7 @@ class ProgressHUD:
         self.titlebar.bind("<B1-Motion>", self._on_drag)
 
         # Title label
-        self.lbl_app = tk.Label(self.titlebar, text=" 📄 good-translate 2.1",
+        self.lbl_app = tk.Label(self.titlebar, text=" 📄 good-translate 2.2",
                                 bg=TITLEBAR_BG, fg=TEXT_COLOR, font=("Segoe UI", 9, "bold"))
         self.lbl_app.pack(side=tk.LEFT, padx=6)
         self.lbl_app.bind("<ButtonPress-1>", self._start_drag)

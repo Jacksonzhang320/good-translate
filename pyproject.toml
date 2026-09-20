@@ -1,6 +1,6 @@
 [project]
 name = "good-translate-local"
-version = "0.2.0"
+version = "2.2.0"
 description = "Local PDF translation, source preservation and publishing helpers"
 requires-python = ">=3.12,<3.13"
 dependencies = [
